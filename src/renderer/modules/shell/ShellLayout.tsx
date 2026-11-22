@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { panelCommandBindings } from '../../../shared/keybindings'
 import { maxPanelWidth, minPanelWidth } from '../../../shared/layout-defaults'
 import type { Settings } from '../../../shared/settings'
+import { CommandPalette } from '../palette/CommandPalette'
+import { registerCommand } from '../palette/commands'
 import { useSettings } from './use-settings'
 import './layout.css'
 
@@ -104,24 +107,23 @@ export function ShellLayout({
   )
 
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (
-        !ready ||
-        event.defaultPrevented ||
-        event.repeat ||
-        event.isComposing ||
-        !event.ctrlKey ||
-        event.shiftKey ||
-        event.metaKey ||
-        event.key.toLowerCase() !== 'b'
-      )
-        return
-      event.preventDefault()
-      toggle(event.altKey ? 'right' : 'left')
+    const removeLeft = registerCommand({
+      id: 'shell.toggle-left',
+      title: 'Basculer la barre latérale',
+      keybinding: panelCommandBindings['shell.toggle-left'],
+      run: () => toggle('left'),
+    })
+    const removeRight = registerCommand({
+      id: 'shell.toggle-right',
+      title: 'Basculer le panneau de contexte',
+      keybinding: panelCommandBindings['shell.toggle-right'],
+      run: () => toggle('right'),
+    })
+    return () => {
+      removeLeft()
+      removeRight()
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [ready, toggle])
+  }, [toggle])
 
   const { layout } = settings
   const panel = (side: Side, contents: ReactNode) => (
@@ -154,6 +156,16 @@ export function ShellLayout({
             {panelNames[side]}
           </button>
         ))}
+        <CommandPalette
+          enabled={ready}
+          keybindings={settings.keybindings}
+          onKeybindingChange={(id, keybinding) =>
+            update((previous) => ({
+              ...previous,
+              keybindings: { ...previous.keybindings, [id]: keybinding },
+            }))
+          }
+        />
       </div>
       {error && <p role="alert">{error}</p>}
       <div className="shell-panes">
