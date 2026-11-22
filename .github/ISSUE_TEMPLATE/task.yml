@@ -1,0 +1,31 @@
+name: Tâche
+description: Une ligne de la roadmap, prête à être implémentée
+labels: ["type:feat"]
+body:
+  - type: input
+    id: spec
+    attributes:
+      label: Section de la spec
+      placeholder: "docs/SPEC.md#agents"
+    validations: { required: true }
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critères d'acceptation
+      value: "- [ ] "
+    validations: { required: true }
+  - type: textarea
+    id: verify
+    attributes:
+      label: Vérification
+      placeholder: "npm test -- agents ; lancer l'appli et …"
+    validations: { required: true }
+  - type: textarea
+    id: files
+    attributes:
+      label: Fichiers probables (5 maximum)
+  - type: input
+    id: deps
+    attributes:
+      label: Dépend de
+      placeholder: "#3, #4"
