@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { dataDir, openDatabase } from './modules/shell/db'
 import { handle } from './modules/shell/ipc'
 import { migrations } from './modules/shell/migrations'
+import { registerProjectHandlers } from './modules/projects/ipc'
 import { createMainWindow } from './modules/shell/window'
 
 handle('app:info', () => ({
@@ -22,6 +23,7 @@ void app.whenReady().then(() => {
     app.exit(1)
     return
   }
+  registerProjectHandlers(db)
   app.on('will-quit', () => db.close())
   createMainWindow()
 })
