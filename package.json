@@ -3,8 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "description": "Poste de pilotage d'agents IA (Claude Code, Codex) pour KDE Plasma",
+  "author": "Maximilien Ilic <159456382+maximilien-ilic@users.noreply.github.com>",
+  "homepage": "https://github.com/maximilien-ilic/workflow-ultimate",
   "license": "MIT",
   "main": "out/main/index.js",
+  "desktopName": "io.github.maximilien-ilic.workflow-ultimate.desktop",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -12,7 +15,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "dist": "npm run build && electron-builder --linux --publish never"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -23,6 +27,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "@vitejs/plugin-react": "^6.3.0",
     "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",
     "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
