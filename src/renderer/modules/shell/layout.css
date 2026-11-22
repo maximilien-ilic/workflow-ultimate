@@ -1,0 +1,55 @@
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+.shell {
+  --shell-border: #8888;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+.shell-controls {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--shell-border);
+}
+
+.shell-panes {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.shell-center,
+.shell-panel {
+  min-width: 0;
+  overflow: auto;
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+
+.shell-center {
+  flex: 1;
+}
+
+.shell-panel {
+  flex: none;
+}
+
+.shell-separator {
+  flex: 0 0 6px;
+  background: var(--shell-border);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.shell-separator-right {
+  order: 1;
+}
+
+.shell-panel-right {
+  order: 2;
+}

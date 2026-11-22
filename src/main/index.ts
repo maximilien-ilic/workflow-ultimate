@@ -1,6 +1,10 @@
 import { app } from 'electron'
 import { handle } from './modules/shell/ipc'
+import { registerSettings } from './modules/shell/settings'
+import { registerSingleInstance } from './modules/shell/single-instance'
 import { createMainWindow } from './modules/shell/window'
+
+if (!registerSingleInstance()) app.exit(0)
 
 handle('app:info', () => ({
   name: app.getName(),
@@ -9,5 +13,6 @@ handle('app:info', () => ({
   node: process.versions.node,
 }))
 
+registerSettings()
 void app.whenReady().then(createMainWindow)
 app.on('window-all-closed', () => app.quit())
