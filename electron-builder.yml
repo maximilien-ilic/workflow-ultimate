@@ -15,6 +15,13 @@ linux:
   icon: build/icons
   executableName: workflow-ultimate
   syncDesktopName: true
+  desktop:
+    entry:
+      Actions: Show;
+    desktopActions:
+      Show:
+        Name: Afficher
+        Exec: workflow-ultimate --action window.show
 pacman:
   synopsis: Workflow Ultimate pour KDE Plasma
   depends:

@@ -1,6 +1,9 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
 import { handle } from './modules/shell/ipc'
+import { registerSingleInstance } from './modules/shell/single-instance'
+
+if (!registerSingleInstance()) app.exit(0)
 
 function createWindow(): void {
   const win = new BrowserWindow({
