@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { readOrcaConfig, readOrcaProfile } from './orca-import'
@@ -63,6 +63,28 @@ describe('readOrcaProfile', () => {
     expect(hash()).toBe(before)
   })
 
+  it("ne crée aucun fichier à côté de la base d'Orca (base en WAL fermée)", () => {
+    const file = makeProfile('p', { repos, worktreeMeta, settings: {} })
+    const wal = new DatabaseSync(file)
+    wal.exec('PRAGMA journal_mode = WAL')
+    wal.close()
+    const before = readdirSync(dirname(file)).sort()
+    expect(readOrcaProfile(file).repos).toHaveLength(2)
+    expect(readdirSync(dirname(file)).sort()).toEqual(before)
+  })
+
+  it("lit aussi ce qu'Orca n'a pas encore reporté du WAL dans la base", () => {
+    const file = makeProfile('p', { repos: [], worktreeMeta: {}, settings: {} })
+    const orca = new DatabaseSync(file)
+    orca.exec('PRAGMA journal_mode = WAL')
+    orca.prepare("UPDATE profile_state_documents SET payload = ? WHERE domain = 'repos'").run(JSON.stringify(repos))
+    try {
+      expect(readOrcaProfile(file).repos).toHaveLength(2)
+    } finally {
+      orca.close()
+    }
+  })
+
   it('ignore les entrées invalides en le signalant', () => {
     const file = makeProfile('p', {
       repos: [...repos, { id: 'bad', path: 'relatif', kind: 'git' }, 'pas un objet'],
@@ -95,6 +117,14 @@ describe('readOrcaProfile', () => {
 describe('readOrcaConfig', () => {
   it("renvoie un résultat vide, sans avertissement, quand Orca n'est pas installé", () => {
     expect(readOrcaConfig(configHome)).toEqual({ repos: [], worktrees: [], workspaceDir: null, warnings: [] })
+  })
+
+  it("signale un dossier profiles illisible au lieu de planter", () => {
+    mkdirSync(join(configHome, 'orca'), { recursive: true })
+    writeFileSync(join(configHome, 'orca/profiles'), 'pas un dossier')
+    const result = readOrcaConfig(configHome)
+    expect(result.repos).toEqual([])
+    expect(result.warnings).toHaveLength(1)
   })
 
   it('fusionne plusieurs profils sans doublon', () => {

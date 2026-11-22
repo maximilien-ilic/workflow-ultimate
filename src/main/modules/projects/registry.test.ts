@@ -41,6 +41,29 @@ describe('repoRoot', () => {
     await expect(repoRoot(join(dir, 'app-feat'))).resolves.toBe(repo)
   })
 
+  it('un dépôt à --separate-git-dir et son worktree lié restent un seul projet', async () => {
+    const repo = join(dir, 'app')
+    mkdirSync(repo)
+    git(repo, 'init', '-q', '-b', 'main', '--separate-git-dir', join(dir, 'gitdir'))
+    git(repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'init')
+    git(repo, 'worktree', 'add', '-q', join(dir, 'app-feat'), '-b', 'feat')
+    await expect(repoRoot(repo)).resolves.toBe(repo)
+    const main = await addProject(db, repo)
+    const fromWorktree = await addProject(db, join(dir, 'app-feat'))
+    expect(fromWorktree.id).toBe(main.id)
+    expect(listProjects(db)).toHaveLength(1)
+  })
+
+  it('gère un chemin qui contient un retour à la ligne', async () => {
+    const repo = makeRepo(join(dir, 'mon\nrepo'))
+    await expect(repoRoot(repo)).resolves.toBe(repo)
+  })
+
+  it('refuse un dépôt nu (bare)', async () => {
+    git(dir, 'init', '-q', '--bare', 'nu.git')
+    await expect(repoRoot(join(dir, 'nu.git'))).rejects.toThrow(/nu|bare/)
+  })
+
   it("refuse un dossier qui n'est pas un dépôt git", async () => {
     mkdirSync(join(dir, 'plain'))
     await expect(repoRoot(join(dir, 'plain'))).rejects.toThrow(/pas un dépôt git/)
@@ -90,6 +113,12 @@ describe('scanForRepos', () => {
     mkdirSync(join(root, 'plain'))
     writeFileSync(join(root, 'file.txt'), '')
     expect((await scanForRepos(root)).sort()).toEqual([join(root, 'a'), join(root, 'group/b')])
+  })
+
+  it('renvoie le dossier lui-même s’il est déjà un dépôt', async () => {
+    const repo = makeRepo(join(dir, 'solo'))
+    makeRepo(join(repo, 'vendor/inner'))
+    expect(await scanForRepos(repo)).toEqual([repo])
   })
 
   it("ne descend pas dans un dépôt (pas de sous-modules ni de dossiers internes)", async () => {
