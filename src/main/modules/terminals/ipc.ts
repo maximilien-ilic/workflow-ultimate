@@ -37,7 +37,8 @@ export function registerTerminalHandlers(host: PtyHost): void {
   })
   host.events.on('restarted', () => {
     for (const owner of new Set(owners.values()))
-      if (!owner.isDestroyed()) owner.send('terminal:event', { type: 'host-restarted' } satisfies TerminalEvent)
+      if (!owner.isDestroyed())
+        owner.send('terminal:event', { type: 'host-restarted' } satisfies TerminalEvent)
     owners.clear()
   })
 

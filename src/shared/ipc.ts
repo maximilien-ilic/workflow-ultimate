@@ -15,9 +15,7 @@ export const ipcRequestSchemas = {
   'projects:pick': z.object({ mode: z.enum(['repo', 'scan']) }).strict(),
   'settings:get': z.object({}).strict(),
   'settings:set': settingsSchema,
-  'terminal:create': z
-    .object({ id: z.uuid(), cwd: absolutePath, cols: dimension, rows: dimension })
-    .strict(),
+  'terminal:create': z.object({ id: z.uuid(), cwd: absolutePath, cols: dimension, rows: dimension }).strict(),
   'terminal:write': z.object({ id: z.uuid(), data: z.string().max(65_536) }).strict(),
   'terminal:resize': z.object({ id: z.uuid(), cols: dimension, rows: dimension }).strict(),
   'terminal:kill': z.object({ id: z.uuid() }).strict(),

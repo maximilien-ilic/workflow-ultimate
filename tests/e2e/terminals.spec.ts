@@ -33,11 +33,14 @@ test('un terminal tourne dans le pty-host et survit au rechargement du renderer'
   const page = await app.firstWindow()
   const id = crypto.randomUUID()
   await listen(page, id)
+  await page.evaluate(({ id, cwd }) => window.wu.invoke('terminal:create', { id, cwd, cols: 80, rows: 24 }), {
+    id,
+    cwd: dir,
+  })
   await page.evaluate(
-    ({ id, cwd }) => window.wu.invoke('terminal:create', { id, cwd, cols: 80, rows: 24 }),
-    { id, cwd: dir },
+    (id) => window.wu.invoke('terminal:write', { id, data: 'echo resultat-$((6*7))\n' }),
+    id,
   )
-  await page.evaluate((id) => window.wu.invoke('terminal:write', { id, data: 'echo resultat-$((6*7))\n' }), id)
   await expect.poll(() => output(page)).toContain('resultat-42')
 
   await page.reload()
