@@ -14,9 +14,11 @@ Taille : S ≈ moins d'une demi-journée d'agent, M ≈ une session, L ≈ à re
 | 0.4 | Contrat IPC typé + validation zod côté main + 1 test | shell | M | ✓ |
 | 0.5 | Couche SQLite (better-sqlite3) + migrations numérotées | shell | M | ✓ |
 | 0.6 | Packaging electron-builder : AppImage + pacman + `.desktop` | shell | S | ✓ |
-| 0.7 | Tokens du design system + thème sombre/clair + composants de base (Button, Input, Tabs, Panel) | shell | M | ✓ |
+| 0.7 | ~~Reporté à M5 (style traité plus tard)~~ Tokens du design system + thème sombre/clair + composants de base (Button, Input, Tabs, Panel) | shell | M | ✓ |
 
-**Critère de sortie** : `npm run dist` produit une AppImage qui ouvre une fenêtre vide aux bonnes couleurs, et la CI est verte.
+**Critère de sortie** : `npm run dist` produit une AppImage qui ouvre une fenêtre vide, et la CI est verte.
+
+> 2026-11-22 : le style visuel (0.7, #7) est reporté à M5. En attendant, l'interface utilise des primitives Radix sans style particulier et des variables CSS minimales ; les tickets qui en dépendaient ne sont plus bloqués.
 
 ## M1 : Projets et terminaux (l'appli remplace Konsole)
 
