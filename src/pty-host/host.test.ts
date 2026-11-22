@@ -55,6 +55,18 @@ describe('pty-host', () => {
     host.handle({ type: 'kill', id: 't1' })
   })
 
+  it('pause suspend la sortie, resume la libère', async () => {
+    const { host, output, waitFor } = setup()
+    host.handle({ type: 'spawn', id: 't1', file: 'sh', args: [], ...base })
+    host.handle({ type: 'pause', id: 't1' })
+    host.handle({ type: 'write', id: 't1', data: 'echo apres-pause\n' })
+    await new Promise((r) => setTimeout(r, 300))
+    expect(output('t1')).not.toContain('apres-pause')
+    host.handle({ type: 'resume', id: 't1' })
+    await waitFor(() => output('t1').includes('apres-pause'))
+    host.handle({ type: 'kill', id: 't1' })
+  })
+
   it('kill termine le processus et libère le terminal', async () => {
     const { host, events, waitFor } = setup()
     host.handle({ type: 'spawn', id: 't1', file: 'sh', args: ['-c', 'sleep 30'], ...base })

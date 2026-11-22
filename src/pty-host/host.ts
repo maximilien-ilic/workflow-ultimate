@@ -50,6 +50,10 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
         if (term.exited) terminals.delete(req.id)
         else term.pty.kill()
         return
+      case 'pause':
+        return term.pty.pause()
+      case 'resume':
+        return term.pty.resume()
       case 'write':
       case 'resize':
         if (term.exited) return error(req.id, `Terminal « ${req.id} » déjà terminé`)

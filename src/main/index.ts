@@ -4,6 +4,7 @@ import { dataDir, openDatabase } from './modules/shell/db'
 import { handle } from './modules/shell/ipc'
 import { migrations } from './modules/shell/migrations'
 import { registerProjectHandlers } from './modules/projects/ipc'
+import { registerTerminalHandlers } from './modules/terminals/ipc'
 import { startPtyHost } from './modules/terminals/pty-host'
 import { registerSettings } from './modules/shell/settings'
 import { registerSingleInstance } from './modules/shell/single-instance'
@@ -30,8 +31,8 @@ void app.whenReady().then(() => {
     return
   }
   registerProjectHandlers(db)
-  // shortcut: lancé mais pas encore utilisé ; le pont vers le renderer arrive avec #60
   const ptyHost = startPtyHost()
+  registerTerminalHandlers(ptyHost)
   app.on('will-quit', () => {
     ptyHost.stop()
     db.close()

@@ -16,6 +16,9 @@ export type HostRequest =
   // Sur un terminal en cours : le termine. Sur un terminal déjà terminé : libère son tampon.
   | { type: 'kill'; id: string }
   | { type: 'replay'; id: string }
+  // Contrôle de flux : le main suspend la lecture du PTY tant que le renderer n'a pas rattrapé son retard.
+  | { type: 'pause'; id: string }
+  | { type: 'resume'; id: string }
 
 export type HostEvent =
   | { type: 'data'; id: string; data: string }
