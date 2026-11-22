@@ -10,8 +10,13 @@ test.beforeEach(() => {
 })
 test.afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
+// Config et données isolées : jamais la vraie config de l'utilisateur, et pas de collision
+// avec le verrou d'instance unique des autres tests lancés en parallèle.
 const launch = () =>
-  _electron.launch({ args: ['out/main/index.js'], env: { ...process.env, XDG_DATA_HOME: join(dir, 'data') } })
+  _electron.launch({
+    args: ['out/main/index.js'],
+    env: { ...process.env, XDG_DATA_HOME: join(dir, 'data'), XDG_CONFIG_HOME: join(dir, 'config') },
+  })
 
 test('un projet ajouté survit au redémarrage, puis se retire', async () => {
   const repo = join(dir, 'mon-repo')
