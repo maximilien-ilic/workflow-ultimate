@@ -14,7 +14,7 @@ Appli de bureau Electron + React + TS pour piloter des agents IA sous KDE Plasma
 - Le plus petit changement qui résout tout le ticket ; pas d'abstraction ni d'option non demandée.
 - Un raccourci avec une limite connue porte un commentaire `// shortcut: <la limite>, <quand l'améliorer>`.
 - Demander avant : d'ajouter une dépendance, de changer le schéma SQLite, la CI ou un contrat IPC existant.
-- Jamais : de secrets dans le code ; de test désactivé ou supprimé pour passer au vert ; de fusion de sa propre PR.
+- Jamais : de secrets dans le code ; de test désactivé ou supprimé pour passer au vert ; de fusion sans CI verte ET relecture de l'autre agent sans point bloquant (seul Claude fusionne, voir docs/ORCHESTRATION.md §5).
 
 ## Skills tiers (`.agents/skills/`)
 
