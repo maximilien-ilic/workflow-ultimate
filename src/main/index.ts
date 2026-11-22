@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
 import { handle } from './modules/shell/ipc'
+import { registerSettings } from './modules/shell/settings'
 import { registerSingleInstance } from './modules/shell/single-instance'
 
 if (!registerSingleInstance()) app.exit(0)
@@ -32,5 +33,6 @@ handle('app:info', () => ({
   node: process.versions.node,
 }))
 
+registerSettings()
 void app.whenReady().then(createWindow)
 app.on('window-all-closed', () => app.quit())
