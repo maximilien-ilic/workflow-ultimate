@@ -5,7 +5,11 @@ import { handle } from './modules/shell/ipc'
 import { migrations } from './modules/shell/migrations'
 import { registerProjectHandlers } from './modules/projects/ipc'
 import { startPtyHost } from './modules/terminals/pty-host'
+import { registerSettings } from './modules/shell/settings'
+import { registerSingleInstance } from './modules/shell/single-instance'
 import { createMainWindow } from './modules/shell/window'
+
+if (!registerSingleInstance()) app.exit(0)
 
 handle('app:info', () => ({
   name: app.getName(),
@@ -14,6 +18,7 @@ handle('app:info', () => ({
   node: process.versions.node,
 }))
 
+registerSettings()
 void app.whenReady().then(() => {
   let db
   try {
