@@ -8,43 +8,58 @@ import type { Project } from '../../../shared/ipc'
 
 const exec = promisify(execFile)
 
-// Racine du dépôt principal : un sous-dossier ou un worktree lié ramène au même projet.
-export async function repoRoot(path: string): Promise<string> {
+const git = async (cwd: string, ...args: string[]) => {
+  const { stdout } = await exec('git', ['-C', cwd, ...args], {
+    timeout: 5000,
+    env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+  })
+  return stdout.endsWith('\n') ? stdout.slice(0, -1) : stdout // un seul chemin par appel : un \n dans un nom reste intact
+}
+
+export type RepoInfo = { root: string; gitDir: string }
+
+// Identité d'un dépôt : son dossier git commun (le même depuis un sous-dossier ou un worktree lié).
+// Racine : le dossier de travail principal. shortcut: avec --separate-git-dir, git ne connaît pas le dossier
+// principal depuis un worktree lié ; on prend alors celui du worktree, et la déduplication passe par gitDir.
+export async function repoInfo(path: string): Promise<RepoInfo> {
   try {
     await stat(path)
   } catch {
     throw new Error(`Dossier introuvable : ${path}`)
   }
-  let stdout: string
+  let gitDir: string, toplevel: string
   try {
-    ;({ stdout } = await exec(
-      'git',
-      ['-C', path, 'rev-parse', '--path-format=absolute', '--git-common-dir', '--show-toplevel'],
-      { timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } },
-    ))
+    gitDir = await git(path, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    toplevel = await git(path, 'rev-parse', '--show-toplevel')
   } catch {
-    throw new Error(`${path} n'est pas un dépôt git`)
+    throw new Error(`${path} n'est pas un dépôt git (ou c'est un dépôt nu, sans dossier de travail)`)
   }
-  const [commonDir = '', toplevel = ''] = stdout.trim().split('\n')
-  return basename(commonDir) === '.git' ? dirname(commonDir) : toplevel
+  return { gitDir, root: basename(gitDir) === '.git' ? dirname(gitDir) : toplevel }
 }
 
-type Row = { id: string; path: string; name: string; added_at: number }
+export const repoRoot = async (path: string) => (await repoInfo(path)).root
+
+type Row = { id: string; path: string; git_dir: string; name: string; added_at: number }
 const toProject = (r: Row): Project => ({ id: r.id, path: r.path, name: r.name, addedAt: r.added_at })
 
 export async function addProject(db: DatabaseSync, path: string): Promise<Project> {
-  const root = await repoRoot(path)
-  db.prepare('INSERT OR IGNORE INTO projects (id, path, name, added_at) VALUES (?, ?, ?, ?)').run(
+  const { root, gitDir } = await repoInfo(path)
+  db.prepare('INSERT OR IGNORE INTO projects (id, path, git_dir, name, added_at) VALUES (?, ?, ?, ?, ?)').run(
     randomUUID(),
     root,
+    gitDir,
     basename(root),
     Date.now(),
   )
-  return toProject(db.prepare('SELECT * FROM projects WHERE path = ?').get(root) as Row)
+  return toProject(
+    db.prepare('SELECT * FROM projects WHERE git_dir = ? OR path = ?').get(gitDir, root) as Row,
+  )
 }
 
 export function listProjects(db: DatabaseSync): Project[] {
-  return (db.prepare('SELECT * FROM projects ORDER BY name COLLATE NOCASE, path').all() as Row[]).map(toProject)
+  return (db.prepare('SELECT * FROM projects ORDER BY name COLLATE NOCASE, path').all() as Row[]).map(
+    toProject,
+  )
 }
 
 export function removeProject(db: DatabaseSync, id: string): void {
@@ -52,20 +67,22 @@ export function removeProject(db: DatabaseSync, id: string): void {
 }
 
 const SKIPPED = new Set(['node_modules'])
+const hasGitDir = (dir: string) =>
+  access(join(dir, '.git')).then(
+    () => true,
+    () => false,
+  )
 
 // Cherche les dépôts sous `root` sans lancer git : un dossier contenant `.git` est un dépôt, on n'y descend pas.
 export async function scanForRepos(root: string, maxDepth = 2): Promise<string[]> {
+  if (await hasGitDir(root)) return [root]
   const found: string[] = []
   const visit = async (dir: string, depth: number): Promise<void> => {
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name.startsWith('.') || SKIPPED.has(entry.name)) continue
       const child = join(dir, entry.name)
-      const isRepo = await access(join(child, '.git')).then(
-        () => true,
-        () => false,
-      )
-      if (isRepo) found.push(child)
+      if (await hasGitDir(child)) found.push(child)
       else if (depth < maxDepth) await visit(child, depth + 1)
     }
   }
