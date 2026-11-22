@@ -37,12 +37,13 @@ export function validated<C extends IpcChannel>(
   fn: Handler<C>,
   trusted: (event: IpcMainInvokeEvent) => boolean,
 ) {
-  const schema = ipcRequestSchemas[channel]
+  const schema: z.ZodType = ipcRequestSchemas[channel]
   return async (event: IpcMainInvokeEvent, raw: unknown): Promise<IpcResponse<C>> => {
     if (!trusted(event)) throw new IpcForbiddenError(channel)
     const parsed = schema.safeParse(raw)
     if (!parsed.success) throw new IpcValidationError(channel, z.prettifyError(parsed.error))
-    return fn(parsed.data)
+    // Le schéma est celui du canal C : le cast redonne à TypeScript ce lien qu'il perd avec un générique.
+    return fn(parsed.data as z.output<(typeof ipcRequestSchemas)[C]>)
   }
 }
 

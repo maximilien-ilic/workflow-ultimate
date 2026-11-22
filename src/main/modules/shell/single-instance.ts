@@ -1,0 +1,44 @@
+import { app, BrowserWindow } from 'electron'
+
+const actionId = /^[a-z0-9.-]+$/
+
+export function parseAction(argv: readonly string[]): string | null {
+  for (let index = 1; index < argv.length; index++) {
+    const arg = argv[index]
+    if (arg === '--') break
+    if (arg === '--action' || arg?.startsWith('--action=')) {
+      const value = arg === '--action' ? argv[index + 1] : arg.slice('--action='.length)
+      if (arg === '--action' && value?.startsWith('-')) return null
+      return value && actionId.test(value) ? value : null
+    }
+  }
+  return null
+}
+
+function showMainWindow(): void {
+  const window = BrowserWindow.getAllWindows()[0]
+  if (!window) return
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
+}
+
+const actions = new Map<string, () => void>([['window.show', showMainWindow]])
+
+export function registerSingleInstance(): boolean {
+  // Chromium peut réordonner les arguments transmis par second-instance.
+  if (!app.requestSingleInstanceLock({ action: parseAction(process.argv) })) return false
+
+  app.on('second-instance', (_event, _argv, _cwd, data) => {
+    const id = data && typeof data === 'object' && 'action' in data ? data.action : null
+    if (typeof id !== 'string' || !actionId.test(id)) {
+      showMainWindow()
+      return
+    }
+
+    const action = actions.get(id)
+    if (action) action()
+    else console.warn(`Action inconnue : ${id}`)
+  })
+  return true
+}

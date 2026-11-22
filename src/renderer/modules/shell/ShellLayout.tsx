@@ -1,0 +1,166 @@
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { maxPanelWidth, minPanelWidth } from '../../../shared/layout-defaults'
+import type { Settings } from '../../../shared/settings'
+import { useSettings } from './use-settings'
+import './layout.css'
+
+type Side = keyof Settings['layout']
+const panelNames = { left: 'Barre latérale', right: 'Contexte' }
+const panelIds = { left: 'shell-left', right: 'shell-right' }
+const clampWidth = (width: number) => Math.min(maxPanelWidth, Math.max(minPanelWidth, Math.round(width)))
+
+function Panel({
+  side,
+  panel,
+  enabled,
+  onResize,
+  children,
+}: {
+  side: Side
+  panel: Settings['layout'][Side]
+  enabled: boolean
+  onResize: (width: number) => void
+  children?: ReactNode
+}) {
+  const drag = useRef<{ pointer: number; x: number; width: number } | null>(null)
+  const [draft, setDraft] = useState<number | null>(null)
+  const direction = side === 'left' ? 1 : -1
+  const width = draft ?? panel.width
+
+  return (
+    <>
+      <aside
+        className={`shell-panel shell-panel-${side}`}
+        id={panelIds[side]}
+        aria-label={panelNames[side]}
+        style={{ width: `min(${width}px, 36%)` }}
+      >
+        {children}
+      </aside>
+      <div
+        className={`shell-separator shell-separator-${side}`}
+        tabIndex={enabled ? 0 : -1}
+        role="separator"
+        aria-label={panelNames[side]}
+        aria-orientation="vertical"
+        aria-controls={panelIds[side]}
+        aria-valuemin={minPanelWidth}
+        aria-valuemax={maxPanelWidth}
+        aria-valuenow={width}
+        onKeyDown={(event) => {
+          const delta = event.key === 'ArrowRight' ? 16 : event.key === 'ArrowLeft' ? -16 : 0
+          if (!enabled || !delta) return
+          event.preventDefault()
+          onResize(clampWidth(width + delta * direction))
+        }}
+        onPointerDown={(event) => {
+          if (!enabled || event.button !== 0 || drag.current) return
+          drag.current = { pointer: event.pointerId, x: event.clientX, width }
+          event.currentTarget.setPointerCapture(event.pointerId)
+        }}
+        onPointerMove={(event) => {
+          const start = drag.current
+          if (start?.pointer === event.pointerId) {
+            setDraft(clampWidth(start.width + (event.clientX - start.x) * direction))
+          }
+        }}
+        onPointerUp={(event) => {
+          const start = drag.current
+          if (start?.pointer !== event.pointerId) return
+          drag.current = null
+          setDraft(null)
+          onResize(clampWidth(start.width + (event.clientX - start.x) * direction))
+        }}
+        onLostPointerCapture={() => {
+          drag.current = null
+          setDraft(null)
+        }}
+      />
+    </>
+  )
+}
+
+export function ShellLayout({
+  children,
+  leftPanel,
+  rightPanel,
+}: {
+  children: ReactNode
+  leftPanel?: ReactNode
+  rightPanel?: ReactNode
+}) {
+  const { settings, ready, error, update } = useSettings()
+  const toggle = useCallback(
+    (side: Side) => {
+      update((previous) => ({
+        ...previous,
+        layout: {
+          ...previous.layout,
+          [side]: { ...previous.layout[side], visible: !previous.layout[side].visible },
+        },
+      }))
+    },
+    [update],
+  )
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (
+        !ready ||
+        event.defaultPrevented ||
+        event.repeat ||
+        event.isComposing ||
+        !event.ctrlKey ||
+        event.shiftKey ||
+        event.metaKey ||
+        event.key.toLowerCase() !== 'b'
+      )
+        return
+      event.preventDefault()
+      toggle(event.altKey ? 'right' : 'left')
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [ready, toggle])
+
+  const { layout } = settings
+  const panel = (side: Side, contents: ReactNode) => (
+    <Panel
+      side={side}
+      panel={layout[side]}
+      enabled={ready}
+      onResize={(width) =>
+        update((previous) => ({
+          ...previous,
+          layout: { ...previous.layout, [side]: { ...previous.layout[side], width } },
+        }))
+      }
+    >
+      {contents}
+    </Panel>
+  )
+
+  return (
+    <div className="shell">
+      <div className="shell-controls">
+        {(['left', 'right'] as const).map((side) => (
+          <button
+            key={side}
+            type="button"
+            disabled={!ready}
+            aria-pressed={layout[side].visible}
+            onClick={() => toggle(side)}
+          >
+            {panelNames[side]}
+          </button>
+        ))}
+      </div>
+      {error && <p role="alert">{error}</p>}
+      <div className="shell-panes">
+        {layout.left.visible && panel('left', leftPanel)}
+        <div className="shell-center">{children}</div>
+        {layout.right.visible && panel('right', rightPanel)}
+      </div>
+    </div>
+  )
+}
