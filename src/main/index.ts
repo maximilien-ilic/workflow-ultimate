@@ -1,26 +1,6 @@
-import { app, BrowserWindow } from 'electron'
-import { join } from 'node:path'
+import { app } from 'electron'
 import { handle } from './modules/shell/ipc'
-
-function createWindow(): void {
-  const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    show: false,
-    title: 'Workflow Ultimate',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  })
-  win.once('ready-to-show', () => win.show())
-
-  const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devUrl) void win.loadURL(devUrl)
-  else void win.loadFile(join(__dirname, '../renderer/index.html'))
-}
+import { createMainWindow } from './modules/shell/window'
 
 handle('app:info', () => ({
   name: app.getName(),
@@ -29,5 +9,5 @@ handle('app:info', () => ({
   node: process.versions.node,
 }))
 
-void app.whenReady().then(createWindow)
+void app.whenReady().then(createMainWindow)
 app.on('window-all-closed', () => app.quit())
