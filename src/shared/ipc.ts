@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { settingsSchema, type Settings } from './settings'
 
 // Contrat unique main ↔ renderer. Pas d'import Node ni DOM ici.
 // Ajouter un canal = un schéma de requête + un type de réponse.
@@ -11,6 +12,8 @@ export const ipcRequestSchemas = {
   'projects:remove': z.object({ id: z.uuid() }).strict(),
   // Ouvre le sélecteur de dossier du système : `repo` ajoute un dépôt, `scan` ajoute tous ceux trouvés dedans.
   'projects:pick': z.object({ mode: z.enum(['repo', 'scan']) }).strict(),
+  'settings:get': z.object({}).strict(),
+  'settings:set': settingsSchema,
 } satisfies Record<string, z.ZodType>
 
 export type AppInfo = { name: string; version: string; electron: string; node: string }
@@ -24,6 +27,8 @@ interface IpcResponses {
   'projects:add': Project
   'projects:remove': null
   'projects:pick': PickResult
+  'settings:get': Settings
+  'settings:set': null
 }
 
 export type IpcChannel = keyof typeof ipcRequestSchemas

@@ -1,0 +1,31 @@
+appId: io.github.maximilien-ilic.workflow-ultimate
+productName: Workflow Ultimate
+directories:
+  output: dist
+toolsets:
+  # Le runtime statique permet le lancement sur Arch sans libfuse.so.2.
+  appimage: '1.0.3'
+files:
+  - out/{main,preload,renderer}/**/*
+linux:
+  target:
+    - AppImage
+    - pacman
+  category: Development
+  icon: build/icons
+  executableName: workflow-ultimate
+  syncDesktopName: true
+  desktop:
+    entry:
+      Actions: Show;
+    desktopActions:
+      Show:
+        Name: Afficher
+        Exec: workflow-ultimate --action window.show
+pacman:
+  synopsis: Workflow Ultimate pour KDE Plasma
+  depends:
+    - alsa-lib
+    - gtk3
+    - mesa
+    - nss
