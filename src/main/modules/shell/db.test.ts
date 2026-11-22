@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -77,6 +77,28 @@ describe('migrate', () => {
 })
 
 describe('openDatabase', () => {
+  it("ne modifie pas une base plus récente que l'appli avant de la refuser", () => {
+    const file = join(dir, 'app.db')
+    const db = new DatabaseSync(file)
+    db.exec('PRAGMA user_version = 9')
+    db.close()
+    expect(() => openDatabase(file, [m1])).toThrow(/plus récente/)
+    const check = new DatabaseSync(file)
+    expect(check.prepare('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'delete' })
+    check.close()
+  })
+
+  it('refuse une base corrompue dès l’ouverture', () => {
+    const file = join(dir, 'app.db')
+    const db = new DatabaseSync(file)
+    db.exec("CREATE TABLE t (x TEXT); INSERT INTO t VALUES (randomblob(3000)), (randomblob(3000));")
+    db.close()
+    const bytes = readFileSync(file)
+    bytes.fill(0xff, 4096, 4096 + 16) // abîme l'en-tête de la page 2 (structure), pas celui du fichier
+    writeFileSync(file, bytes)
+    expect(() => openDatabase(file, [m1])).toThrow(/corrompue/)
+  })
+
   it('crée le dossier, active WAL et migre', () => {
     const file = join(dir, 'sous/dossier/app.db')
     const db = openDatabase(file, [m1])
