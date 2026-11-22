@@ -23,4 +23,4 @@ rechargement ou le plantage de l'interface ne tue pas les agents.
 
 - On accepte le coût mémoire d'Electron.
 - L'intégration KDE passe par les standards freedesktop (StatusNotifierItem, notifications, portails xdg) et non par des API Qt.
-- Les modules natifs (node-pty, better-sqlite3) doivent être recompilés pour la version d'Electron utilisée (`electron-builder install-app-deps`).
+- Les modules natifs (node-pty ; plus better-sqlite3 depuis l'ADR-0002) doivent être recompilés pour la version d'Electron utilisée (`electron-builder install-app-deps`).

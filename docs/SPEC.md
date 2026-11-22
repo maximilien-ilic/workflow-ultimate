@@ -88,11 +88,11 @@ Modules prévus **après la v1** (ne pas coder avant) : `browser` (navigateur in
 | État UI | Zustand | Plus simple que Redux pour une appli mono-utilisateur. |
 | Terminal | `@xterm/xterm` + addons, `node-pty` | Le standard (VS Code, Orca). |
 | Diff/éditeur | Monaco | Mode diff intégré. |
-| Données | SQLite via `better-sqlite3` | Local, synchrone et fiable. |
+| Données | SQLite via `node:sqlite` (intégré à Node/Electron) | Local, synchrone, sans module natif. Voir [ADR-0002](adr/0002-node-sqlite.md). |
 | Git/GitHub | CLI `git` et `gh` lancés comme sous-processus | Pas de réimplémentation : on s'appuie sur des outils éprouvés. |
 | Tests | Vitest (unitaires), Playwright pour Electron (e2e) | |
 | Paquets | electron-builder : AppImage + paquet pacman | Tu es sur Arch. |
-| Gestionnaire de paquets | npm | Déjà installé. node-pty et better-sqlite3 se compilent mal avec bun. |
+| Gestionnaire de paquets | npm | Déjà installé. node-pty se compile mal avec bun. |
 
 ## 5. Commandes
 

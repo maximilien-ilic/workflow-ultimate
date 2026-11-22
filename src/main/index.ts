@@ -1,5 +1,8 @@
-import { app } from 'electron'
+import { app, dialog } from 'electron'
+import { join } from 'node:path'
+import { dataDir, openDatabase } from './modules/shell/db'
 import { handle } from './modules/shell/ipc'
+import { migrations } from './modules/shell/migrations'
 import { createMainWindow } from './modules/shell/window'
 
 handle('app:info', () => ({
@@ -9,5 +12,17 @@ handle('app:info', () => ({
   node: process.versions.node,
 }))
 
-void app.whenReady().then(createMainWindow)
+void app.whenReady().then(() => {
+  let db
+  try {
+    db = openDatabase(join(dataDir(), 'app.db'), migrations)
+  } catch (error) {
+    // Ne jamais démarrer sur une base à moitié migrée : on s'arrête et on dit pourquoi.
+    dialog.showErrorBox('Workflow Ultimate : base de données', (error as Error).message)
+    app.exit(1)
+    return
+  }
+  app.on('will-quit', () => db.close())
+  createMainWindow()
+})
 app.on('window-all-closed', () => app.quit())
