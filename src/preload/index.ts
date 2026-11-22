@@ -1,6 +1,10 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
+import type { IpcChannel, IpcRequest, IpcResponse } from '../shared/ipc'
 
-// shortcut: expose seulement les versions, le contrat IPC typé arrive avec #4
-contextBridge.exposeInMainWorld('wu', {
-  versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
-})
+const api = {
+  invoke: <C extends IpcChannel>(channel: C, req: IpcRequest<C>): Promise<IpcResponse<C>> =>
+    ipcRenderer.invoke(channel, req),
+}
+export type WuApi = typeof api
+
+contextBridge.exposeInMainWorld('wu', api)

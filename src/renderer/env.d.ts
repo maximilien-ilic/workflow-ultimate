@@ -1,3 +1,3 @@
 interface Window {
-  wu: { versions: { electron: string; chrome: string; node: string } }
+  wu: import('../preload').WuApi
 }
