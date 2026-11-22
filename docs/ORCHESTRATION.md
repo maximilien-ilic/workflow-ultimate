@@ -70,3 +70,29 @@ issue Ready ──► worktree feat/<n>-slug ──► agent (Claude Code ou Cod
 | Review | `ponytail-review`, `code-review-and-quality` |
 | Fin de milestone | `ponytail-audit`, `ponytail-debt` |
 | Comprendre le code (une fois qu'il y en a) | `graphify` sur le repo, régénéré à chaque fin de milestone |
+
+## 8. Équipe d'agents : Claude coordinateur + Codex worker
+
+| Rôle | Agent | Où | Fait quoi |
+|---|---|---|---|
+| Coordinateur | Claude Code | workspace principal | choisit les tickets, rédige les specs des workers, relit les PR, prend les tickets transverses (contrats IPC, architecture, tickets non `agent-ready`) |
+| Worker | Codex | un worktree Orca par lot de tickets | tickets `agent-ready` bien délimités : config, outillage, CI, parsers avec tests, composants isolés |
+
+**Lancer un worker Codex** (depuis le coordinateur) :
+
+```
+orca orchestration worker-start --agent codex \
+  --worktree new-top-level --repo name:workflow-ultimate --name codex-<sujet> \
+  --base-branch main \
+  --task-title "Tickets #a + #b" --spec-file <spec.md>
+```
+
+- Si la base n'est pas encore fusionnée, `--base-branch` pointe sur la branche de la PR dont le lot dépend. Le worker rebase sur `main` après la fusion.
+- Orca réveille le coordinateur quand le worker a fini (`worker_done`) ou pose une question (`ask`). On ne fait pas de polling.
+
+**Spec d'un worker** (fichier markdown autonome) : tickets à faire (`gh issue view <n>`), branche de départ, **zone de fichiers autorisée** (et celles interdites parce qu'un autre agent y travaille), contraintes (AGENTS.md, pas d'attribution IA, ne jamais fusionner), et preuves attendues (URL des PR, sortie des commandes, état de la CI).
+
+**Règles de parallélisme** :
+- 2 workers Codex au maximum en plus du coordinateur, chacun sur des zones de fichiers séparées, déclarées dans sa spec.
+- Fichiers partagés (`package.json`, `package-lock.json`) : le dernier qui fusionne rebase et relance `npm install`.
+- Revue croisée : Claude relit les PR de Codex (`/ponytail-review`), et Codex relit celles de Claude (worker de review en lecture seule). La fusion reste humaine.
