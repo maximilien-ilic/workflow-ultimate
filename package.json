@@ -46,6 +46,7 @@
   },
   "allowScripts": {
     "node-pty@1.1.0": true,
-    "electron@45.4.1": true
+    "electron@45.4.1": true,
+    "electron-winstaller": false
   }
 }
