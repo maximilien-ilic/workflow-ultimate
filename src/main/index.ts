@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
+import { handle } from './modules/shell/ipc'
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -20,6 +21,13 @@ function createWindow(): void {
   if (devUrl) void win.loadURL(devUrl)
   else void win.loadFile(join(__dirname, '../renderer/index.html'))
 }
+
+handle('app:info', () => ({
+  name: app.getName(),
+  version: app.getVersion(),
+  electron: process.versions.electron,
+  node: process.versions.node,
+}))
 
 void app.whenReady().then(createWindow)
 app.on('window-all-closed', () => app.quit())
