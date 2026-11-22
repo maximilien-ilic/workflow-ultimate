@@ -53,6 +53,47 @@ test('un terminal tourne dans le pty-host et survit au rechargement du renderer'
   await app.close()
 })
 
+test('un shell survit au plantage forcé du renderer et sa sortie est réaffichée', async () => {
+  const app = await launch()
+  const page = await app.firstWindow()
+  const id = crypto.randomUUID()
+  await page.evaluate(({ id, cwd }) => window.wu.invoke('terminal:create', { id, cwd, cols: 80, rows: 24 }), {
+    id,
+    cwd: dir,
+  })
+  // Une commande longue : elle doit continuer pendant et après le plantage.
+  await page.evaluate(
+    (id) => window.wu.invoke('terminal:write', { id, data: 'echo avant; sleep 2; echo apres-crash\n' }),
+    id,
+  )
+  await expect
+    .poll(() => page.evaluate((id) => window.wu.invoke('terminal:attach', { id }), id))
+    .toContain('avant')
+
+  // Plantage puis rechargement pilotés depuis le main : la page Playwright plantée n'est plus utilisable,
+  // on interroge donc directement le nouveau renderer.
+  await app.evaluate(({ BrowserWindow }) => {
+    const contents = BrowserWindow.getAllWindows()[0]!.webContents
+    return new Promise((resolve) => {
+      contents.once('render-process-gone', () => {
+        contents.once('did-finish-load', resolve)
+        contents.reload()
+      })
+      contents.forcefullyCrashRenderer()
+    })
+  })
+  const attachAfterCrash = () =>
+    app.evaluate(
+      ({ BrowserWindow }, id) =>
+        BrowserWindow.getAllWindows()[0]!.webContents.executeJavaScript(
+          `window.wu.invoke('terminal:attach', { id: ${JSON.stringify(id)} })`,
+        ) as Promise<string>,
+      id,
+    )
+  await expect.poll(attachAfterCrash, { timeout: 10_000 }).toContain('apres-crash')
+  await app.close()
+})
+
 test('un terminal inconnu ou un dossier invalide est refusé clairement', async () => {
   const app = await launch()
   const page = await app.firstWindow()
