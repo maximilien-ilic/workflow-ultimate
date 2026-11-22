@@ -6,7 +6,8 @@ const exec = promisify(execFile)
 
 test('routes a second launch to the existing window', async () => {
   const testInfo = test.info()
-  const args = ['out/main/index.js', `--user-data-dir=${testInfo.outputPath('profile')}`]
+  // shortcut: le runner Ubuntu ne peut pas initialiser le sandbox Chromium, retirer le flag quand il le pourra.
+  const args = ['--no-sandbox', 'out/main/index.js', `--user-data-dir=${testInfo.outputPath('profile')}`]
   const env = { ...process.env, XDG_DATA_HOME: testInfo.outputPath('data') }
   const app = await _electron.launch({ args, env })
 
