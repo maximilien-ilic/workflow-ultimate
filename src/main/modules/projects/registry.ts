@@ -5,13 +5,14 @@ import { basename, dirname, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { promisify } from 'node:util'
 import type { Project } from '../../../shared/ipc'
+import { gitEnv } from './git-env'
 
 const exec = promisify(execFile)
 
 const git = async (cwd: string, ...args: string[]) => {
   const { stdout } = await exec('git', ['-C', cwd, ...args], {
     timeout: 5000,
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+    env: gitEnv(),
   })
   return stdout.endsWith('\n') ? stdout.slice(0, -1) : stdout // un seul chemin par appel : un \n dans un nom reste intact
 }
