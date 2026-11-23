@@ -1,0 +1,48 @@
+.command-palette {
+  width: min(32rem, calc(100vw - 4rem));
+  border: 1px solid #888;
+}
+
+.command-palette::backdrop {
+  background: #0005;
+}
+
+.command-palette input[role='combobox'] {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.command-palette ul {
+  list-style: none;
+  padding: 0;
+  max-height: 15rem;
+  overflow: auto;
+}
+
+.command-palette li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem;
+  cursor: pointer;
+}
+
+.command-palette li[aria-selected='true'] {
+  background-color: Highlight;
+  color: HighlightText;
+}
+
+.palette-actions,
+.command-palette form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.command-palette form {
+  margin-top: 0.75rem;
+}
+
+.command-palette label input {
+  margin-inline-start: 0.5rem;
+}
