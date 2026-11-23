@@ -1,3 +1,6 @@
+import { chmodSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { HostEvent } from '../shared/pty-protocol'
 import { createHost } from './host'
@@ -6,7 +9,10 @@ function setup() {
   const events: HostEvent[] = []
   const host = createHost((e) => events.push(e))
   const output = (id: string) =>
-    events.filter((e) => e.type === 'data' && e.id === id).map((e) => (e as { data: string }).data).join('')
+    events
+      .filter((e) => e.type === 'data' && e.id === id)
+      .map((e) => (e as { data: string }).data)
+      .join('')
   const waitFor = async (check: () => boolean, ms = 5000) => {
     const start = Date.now()
     while (!check()) {
@@ -24,6 +30,7 @@ describe('pty-host', () => {
     host.handle({ type: 'spawn', id: 't1', file: 'sh', args: ['-c', 'echo bonjour; exit 3'], ...base })
     await waitFor(() => events.some((e) => e.type === 'exit'))
     expect(output('t1')).toContain('bonjour')
+    expect(events[0]).toMatchObject({ type: 'spawned', id: 't1', pid: expect.any(Number) })
     expect(events.at(-1)).toMatchObject({ type: 'exit', id: 't1', exitCode: 3 })
   })
 
@@ -65,6 +72,21 @@ describe('pty-host', () => {
     host.handle({ type: 'resume', id: 't1' })
     await waitFor(() => output('t1').includes('apres-pause'))
     host.handle({ type: 'kill', id: 't1' })
+  })
+
+  it('une exception pendant une requête devient une erreur du terminal, le host continue', async () => {
+    const { host, events, output, waitFor } = setup()
+    const locked = mkdtempSync(join(tmpdir(), 'wu-locked-'))
+    chmodSync(locked, 0o000) // stat d'un sous-dossier → EACCES (exception, pas ENOENT)
+    try {
+      host.handle({ type: 'spawn', id: 't1', file: 'sh', args: [], ...base, cwd: join(locked, 'sub') })
+    } finally {
+      chmodSync(locked, 0o700)
+      rmSync(locked, { recursive: true })
+    }
+    expect(events.at(-1)).toMatchObject({ type: 'error', id: 't1' })
+    host.handle({ type: 'spawn', id: 't2', file: 'sh', args: ['-c', 'echo toujours-vivant'], ...base })
+    await waitFor(() => output('t2').includes('toujours-vivant'))
   })
 
   it('kill termine le processus et libère le terminal', async () => {

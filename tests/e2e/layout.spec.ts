@@ -24,16 +24,18 @@ test('restores resized and hidden panels after restarting Electron', async () =>
     savedWidth = initialWidth + 16
     await expect(handle).toHaveAttribute('aria-valuenow', String(savedWidth))
 
+    const elementPosition = { x: 3, y: 12 }
+    await (await first.browserWindow(page)).evaluate((window) => window.focus())
+    await handle.hover({ position: elementPosition })
     const bounds = await handle.boundingBox()
     if (!bounds) throw new Error('Poignée introuvable')
-    const x = bounds.x + bounds.width / 2
-    const y = bounds.y + bounds.height / 2
-    await page.mouse.move(x, y)
+    const x = bounds.x + elementPosition.x
+    const y = bounds.y + elementPosition.y
     await page.mouse.down()
-    await page.mouse.move(x + 30, y)
-    await page.mouse.up()
+    await page.mouse.move(x + 30, y, { steps: 3 })
     savedWidth += 30
     await expect(handle).toHaveAttribute('aria-valuenow', String(savedWidth))
+    await page.mouse.up()
 
     await page.keyboard.press('Control+b')
     await expect(left).toBeHidden()

@@ -10,11 +10,15 @@ describe('shellEnv', () => {
       HOME: '/h',
       ELECTRON_RUN_AS_NODE: '1',
       ELECTRON_RENDERER_URL: 'x',
+      GIT_DIR: '/autre/.git',
+      GIT_WORK_TREE: '/autre',
+      GIT_EDITOR: 'vim',
       CHROME_DESKTOP: 'y',
     })
     expect(env).toEqual({
       PATH: '/bin',
       HOME: '/h',
+      GIT_EDITOR: 'vim',
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
       TERM_PROGRAM: 'workflow-ultimate',

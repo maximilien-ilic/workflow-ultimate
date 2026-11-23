@@ -36,7 +36,7 @@ interface IpcResponses {
   'projects:add': Project
   'projects:remove': null
   'projects:pick': PickResult
-  'terminal:create': null
+  'terminal:create': { pid: number }
   'terminal:write': null
   'terminal:resize': null
   'terminal:kill': null
