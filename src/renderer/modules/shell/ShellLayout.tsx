@@ -25,10 +25,11 @@ function Panel({
   onResize: (width: number) => void
   children?: ReactNode
 }) {
-  const drag = useRef<{ pointer: number; x: number; width: number } | null>(null)
+  const drag = useRef<AbortController | null>(null)
   const [draft, setDraft] = useState<number | null>(null)
   const direction = side === 'left' ? 1 : -1
   const width = draft ?? panel.width
+  useEffect(() => () => drag.current?.abort(), [])
 
   return (
     <>
@@ -57,26 +58,47 @@ function Panel({
           onResize(clampWidth(width + delta * direction))
         }}
         onPointerDown={(event) => {
-          if (!enabled || event.button !== 0 || drag.current) return
-          drag.current = { pointer: event.pointerId, x: event.clientX, width }
-          event.currentTarget.setPointerCapture(event.pointerId)
-        }}
-        onPointerMove={(event) => {
-          const start = drag.current
-          if (start?.pointer === event.pointerId) {
-            setDraft(clampWidth(start.width + (event.clientX - start.x) * direction))
+          if (!enabled || event.button !== 0 || !event.isPrimary) return
+          event.preventDefault()
+          event.currentTarget.focus({ preventScroll: true })
+          drag.current?.abort()
+          const controller = new AbortController()
+          drag.current = controller
+          const options = { signal: controller.signal }
+          const { pointerId, clientX } = event
+          const resized = (x: number) => clampWidth(width + (x - clientX) * direction)
+          const end = () => {
+            controller.abort()
+            drag.current = null
+            setDraft(null)
           }
-        }}
-        onPointerUp={(event) => {
-          const start = drag.current
-          if (start?.pointer !== event.pointerId) return
-          drag.current = null
-          setDraft(null)
-          onResize(clampWidth(start.width + (event.clientX - start.x) * direction))
-        }}
-        onLostPointerCapture={() => {
-          drag.current = null
-          setDraft(null)
+
+          // Le pointeur peut rester dans la fenêtre après la perte de capture.
+          window.addEventListener(
+            'pointermove',
+            (move) => {
+              if (move.pointerId === pointerId && move.buttons & 1) setDraft(resized(move.clientX))
+            },
+            options,
+          )
+          window.addEventListener(
+            'pointerup',
+            (up) => {
+              if (up.pointerId !== pointerId || up.button !== 0) return
+              end()
+              onResize(resized(up.clientX))
+            },
+            options,
+          )
+          window.addEventListener(
+            'pointercancel',
+            (cancel) => {
+              if (cancel.pointerId === pointerId) end()
+            },
+            options,
+          )
+          window.addEventListener('blur', end, options)
+          event.currentTarget.setPointerCapture(event.pointerId)
         }}
       />
     </>
