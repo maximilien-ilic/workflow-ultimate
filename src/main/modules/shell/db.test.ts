@@ -88,6 +88,14 @@ describe('openDatabase', () => {
     check.close()
   })
 
+  it('refuse une version négative (jamais écrite par l’appli)', () => {
+    const file = join(dir, 'app.db')
+    const db = new DatabaseSync(file)
+    db.exec('PRAGMA user_version = -1')
+    db.close()
+    expect(() => openDatabase(file, [m1])).toThrow(/version -1/)
+  })
+
   it('refuse une base corrompue dès l’ouverture', () => {
     const file = join(dir, 'app.db')
     const db = new DatabaseSync(file)
