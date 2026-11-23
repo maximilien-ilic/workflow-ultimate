@@ -1,0 +1,31 @@
+#!/usr/bin/env node
+const { createConnection } = require('node:net')
+
+const [agent, type, rawCode] = process.argv.slice(2)
+const sessionId = process.env.WU_SESSION_ID
+const path = process.env.WU_AGENT_SOCKET
+const hookEvents = ['prompt-submitted', 'needs-input', 'turn-finished', 'error']
+
+function notify() {
+  if (!sessionId || sessionId.length > 64 || !path?.startsWith('/') || Buffer.byteLength(path) > 107) return
+  if (agent !== 'claude-code' && agent !== 'codex') return
+
+  const event = { type }
+  if (type === 'pty-exit') {
+    const code = rawCode === 'null' ? null : Number(rawCode)
+    if (code !== null && (!rawCode || !Number.isSafeInteger(code))) return
+    event.code = code
+  } else if (!hookEvents.includes(type)) {
+    return
+  }
+
+  const client = createConnection(path)
+  const timeout = setTimeout(() => client.destroy(), 1800)
+  client.once('error', () => client.destroy())
+  client.once('close', () => clearTimeout(timeout))
+  client.once('connect', () => {
+    client.end(JSON.stringify({ sessionId, agent, event, ts: Date.now() }) + '\n', () => client.destroy())
+  })
+}
+
+notify()
