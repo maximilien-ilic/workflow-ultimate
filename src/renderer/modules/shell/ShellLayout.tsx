@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { panelCommandBindings } from '../../../shared/keybindings'
 import { maxPanelWidth, minPanelWidth } from '../../../shared/layout-defaults'
 import type { Settings } from '../../../shared/settings'
+import { CommandPalette } from '../palette/CommandPalette'
+import { registerCommand } from '../palette/commands'
 import { useSettings } from './use-settings'
 import './layout.css'
 
@@ -22,10 +25,11 @@ function Panel({
   onResize: (width: number) => void
   children?: ReactNode
 }) {
-  const drag = useRef<{ pointer: number; x: number; width: number } | null>(null)
+  const drag = useRef<AbortController | null>(null)
   const [draft, setDraft] = useState<number | null>(null)
   const direction = side === 'left' ? 1 : -1
   const width = draft ?? panel.width
+  useEffect(() => () => drag.current?.abort(), [])
 
   return (
     <>
@@ -54,26 +58,47 @@ function Panel({
           onResize(clampWidth(width + delta * direction))
         }}
         onPointerDown={(event) => {
-          if (!enabled || event.button !== 0 || drag.current) return
-          drag.current = { pointer: event.pointerId, x: event.clientX, width }
-          event.currentTarget.setPointerCapture(event.pointerId)
-        }}
-        onPointerMove={(event) => {
-          const start = drag.current
-          if (start?.pointer === event.pointerId) {
-            setDraft(clampWidth(start.width + (event.clientX - start.x) * direction))
+          if (!enabled || event.button !== 0 || !event.isPrimary) return
+          event.preventDefault()
+          event.currentTarget.focus({ preventScroll: true })
+          drag.current?.abort()
+          const controller = new AbortController()
+          drag.current = controller
+          const options = { signal: controller.signal }
+          const { pointerId, clientX } = event
+          const resized = (x: number) => clampWidth(width + (x - clientX) * direction)
+          const end = () => {
+            controller.abort()
+            drag.current = null
+            setDraft(null)
           }
-        }}
-        onPointerUp={(event) => {
-          const start = drag.current
-          if (start?.pointer !== event.pointerId) return
-          drag.current = null
-          setDraft(null)
-          onResize(clampWidth(start.width + (event.clientX - start.x) * direction))
-        }}
-        onLostPointerCapture={() => {
-          drag.current = null
-          setDraft(null)
+
+          // Le pointeur peut rester dans la fenêtre après la perte de capture.
+          window.addEventListener(
+            'pointermove',
+            (move) => {
+              if (move.pointerId === pointerId && move.buttons & 1) setDraft(resized(move.clientX))
+            },
+            options,
+          )
+          window.addEventListener(
+            'pointerup',
+            (up) => {
+              if (up.pointerId !== pointerId || up.button !== 0) return
+              end()
+              onResize(resized(up.clientX))
+            },
+            options,
+          )
+          window.addEventListener(
+            'pointercancel',
+            (cancel) => {
+              if (cancel.pointerId === pointerId) end()
+            },
+            options,
+          )
+          window.addEventListener('blur', end, options)
+          event.currentTarget.setPointerCapture(event.pointerId)
         }}
       />
     </>
@@ -104,24 +129,23 @@ export function ShellLayout({
   )
 
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (
-        !ready ||
-        event.defaultPrevented ||
-        event.repeat ||
-        event.isComposing ||
-        !event.ctrlKey ||
-        event.shiftKey ||
-        event.metaKey ||
-        event.key.toLowerCase() !== 'b'
-      )
-        return
-      event.preventDefault()
-      toggle(event.altKey ? 'right' : 'left')
+    const removeLeft = registerCommand({
+      id: 'shell.toggle-left',
+      title: 'Basculer la barre latérale',
+      keybinding: panelCommandBindings['shell.toggle-left'],
+      run: () => toggle('left'),
+    })
+    const removeRight = registerCommand({
+      id: 'shell.toggle-right',
+      title: 'Basculer le panneau de contexte',
+      keybinding: panelCommandBindings['shell.toggle-right'],
+      run: () => toggle('right'),
+    })
+    return () => {
+      removeLeft()
+      removeRight()
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [ready, toggle])
+  }, [toggle])
 
   const { layout } = settings
   const panel = (side: Side, contents: ReactNode) => (
@@ -154,6 +178,16 @@ export function ShellLayout({
             {panelNames[side]}
           </button>
         ))}
+        <CommandPalette
+          enabled={ready}
+          keybindings={settings.keybindings}
+          onKeybindingChange={(id, keybinding) =>
+            update((previous) => ({
+              ...previous,
+              keybindings: { ...previous.keybindings, [id]: keybinding },
+            }))
+          }
+        />
       </div>
       {error && <p role="alert">{error}</p>}
       <div className="shell-panes">

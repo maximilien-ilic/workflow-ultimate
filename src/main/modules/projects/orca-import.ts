@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, rmSync, type Dirent } from 'node:fs'
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, rmSync, statSync, type Dirent } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -25,13 +25,32 @@ const empty = (): OrcaImport => ({ repos: [], worktrees: [], workspaceDir: null,
 
 // Même en lecture seule, SQLite peut créer -wal/-shm à côté d'une base en WAL : on lit donc une copie
 // (base + WAL éventuel) dans un dossier temporaire, et le profil d'Orca n'est jamais touché.
-function readSnapshot(file: string): Map<string, string> {
+// Empreinte (taille + date) de la base et de son WAL : si elle change pendant la copie, Orca a écrit
+// (ou fait un checkpoint) entre les deux fichiers, et la copie pourrait mélanger deux états.
+const fingerprint = (file: string) =>
+  [file, `${file}-wal`]
+    .map((f) => {
+      const s = statSync(f, { throwIfNoEntry: false })
+      return s ? `${s.size}:${s.mtimeMs}` : '-'
+    })
+    .join('|')
+
+export type CopyFile = (from: string, to: string) => void
+
+export function readSnapshot(file: string, copy: CopyFile = copyFileSync): Map<string, string> {
   const tmp = mkdtempSync(join(tmpdir(), 'wu-orca-'))
   try {
-    const copy = join(tmp, 'profile-state.db')
-    copyFileSync(file, copy)
-    if (existsSync(`${file}-wal`)) copyFileSync(`${file}-wal`, `${copy}-wal`)
-    const db = new DatabaseSync(copy)
+    const target = join(tmp, 'profile-state.db')
+    for (let attempt = 1; ; attempt++) {
+      rmSync(`${target}-wal`, { force: true })
+      const before = fingerprint(file)
+      copy(file, target)
+      if (existsSync(`${file}-wal`)) copy(`${file}-wal`, `${target}-wal`)
+      if (fingerprint(file) === before) break
+      if (attempt === 3)
+        throw new Error("base Orca modifiée pendant la lecture (Orca est en train d'écrire), réessayer")
+    }
+    const db = new DatabaseSync(target)
     try {
       const rows = db.prepare('SELECT domain, payload FROM profile_state_documents').all() as {
         domain: string
@@ -95,7 +114,8 @@ export function readOrcaProfile(file: string): OrcaImport {
       const repoPath = repoById.get(key.slice(0, sep))
       const path = key.slice(sep + 2)
       const meta = worktreeEntry.safeParse(value)
-      if (sep < 0 || !repoPath || path === repoPath || !absolute.safeParse(path).success || !meta.success) continue
+      if (sep < 0 || !repoPath || path === repoPath || !absolute.safeParse(path).success || !meta.success)
+        continue
       result.worktrees.push({ repoPath, path, name: meta.data.displayName || basename(path) })
     }
   }
@@ -125,7 +145,8 @@ export function readOrcaConfig(
     if (!profile.isDirectory() || !existsSync(file)) continue
     const one = readOrcaProfile(file)
     for (const repo of one.repos) if (!merged.repos.some((r) => r.path === repo.path)) merged.repos.push(repo)
-    for (const wt of one.worktrees) if (!merged.worktrees.some((w) => w.path === wt.path)) merged.worktrees.push(wt)
+    for (const wt of one.worktrees)
+      if (!merged.worktrees.some((w) => w.path === wt.path)) merged.worktrees.push(wt)
     merged.workspaceDir ??= one.workspaceDir
     merged.warnings.push(...one.warnings)
   }
