@@ -41,5 +41,22 @@ test("un agent lancé depuis un projet remonte ses états jusqu'à l'onglet", as
   const sessions = await page.evaluate(() => window.wu.invoke('agents:list', {}))
   expect(sessions).toHaveLength(1)
   expect(sessions[0]).toMatchObject({ agent: 'claude-code', cwd: repo, state: 'done' })
+
+  // En-tête de l'agent : état lisible, puis « Reprendre » une fois le processus terminé.
+  const header = page.getByRole('region', { name: 'Agent Claude Code' })
+  await expect(header.getByRole('status')).toHaveText(/terminé/)
+  await header.getByRole('button', { name: 'Reprendre' }).click()
+  const resumed = page.getByRole('tab', { name: /\(reprise\)/ })
+  await expect(resumed).toContainText('attend une réponse')
+  await expect(page.getByRole('region', { name: 'Agent Claude Code' }).getByRole('status')).toHaveText(
+    /attend une réponse/,
+  )
+
+  // Fermer l'onglet repris : il disparaît, et son agent est arrêté.
+  await page
+    .getByRole('region', { name: 'Agent Claude Code' })
+    .getByRole('button', { name: 'Fermer' })
+    .click()
+  await expect(resumed).toHaveCount(0)
   await app.close()
 })
