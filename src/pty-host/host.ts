@@ -39,7 +39,17 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
     })
   }
 
+  // Frontière de chaque requête : une exception (EACCES, PTY déjà fermé…) devient une erreur
+  // de ce terminal, jamais un plantage du pty-host qui ferait perdre tous les autres.
   function handle(req: HostRequest): void {
+    try {
+      dispatch(req)
+    } catch (e) {
+      error(req.id, `Échec de « ${req.type} » : ${(e as Error).message}`)
+    }
+  }
+
+  function dispatch(req: HostRequest): void {
     if (req.type === 'spawn') return spawnTerminal(req)
     const term = terminals.get(req.id)
     if (!term) return error(req.id, `Terminal « ${req.id} » inconnu`)
