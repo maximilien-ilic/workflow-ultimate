@@ -5,7 +5,7 @@ import { basename, dirname, join } from 'node:path'
 import type { Worktree } from '../../../shared/ipc'
 import { runGit } from './git-env'
 
-// shortcut: dossier fixe, comme Orca (~/orca/workspaces) ; à rendre réglable avec l'import Orca (#19)
+// Repli tant qu'aucun dossier de workspaces n'a été importé.
 export const defaultWorkspaces = () => join(homedir(), 'workflow-ultimate', 'workspaces')
 
 export async function branchExists(repo: string, branch: string): Promise<boolean> {

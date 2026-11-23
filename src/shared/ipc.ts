@@ -13,6 +13,15 @@ export const ipcRequestSchemas = {
   'projects:remove': z.object({ id: z.uuid() }).strict(),
   // Ouvre le sélecteur de dossier du système : `repo` ajoute un dépôt, `scan` ajoute tous ceux trouvés dedans.
   'projects:pick': z.object({ mode: z.enum(['repo', 'scan']) }).strict(),
+  'projects:orcaPreview': z.object({ manual: z.boolean() }).strict(),
+  'projects:orcaImport': z
+    .object({
+      repos: z.array(absolutePath).max(2000),
+      worktrees: z.array(absolutePath).max(2000),
+      useWorkspace: z.boolean(),
+    })
+    .strict(),
+  'projects:orcaDismiss': z.object({}).strict(),
   'diagnostics:report': z.object({}).strict(),
   'settings:get': z.object({}).strict(),
   'settings:set': settingsSchema,
@@ -77,6 +86,12 @@ export type AgentSession = {
 // Poussé sur le canal `agent:event` à la fenêtre qui a lancé l'agent.
 export type AgentEvent = { sessionId: string; terminalId: string; state: AgentState }
 export type PickResult = { added: Project[]; rejected: { path: string; reason: string }[] }
+export type OrcaImport = {
+  repos: { path: string; name: string; color: string | null }[]
+  worktrees: { repoPath: string; path: string; name: string }[]
+  workspaceDir: string | null
+  warnings: string[]
+}
 
 interface IpcResponses {
   'app:info': AppInfo
@@ -84,6 +99,9 @@ interface IpcResponses {
   'projects:add': Project
   'projects:remove': null
   'projects:pick': PickResult
+  'projects:orcaPreview': OrcaImport | null
+  'projects:orcaImport': PickResult & { activeWorktree: string | null }
+  'projects:orcaDismiss': null
   'worktrees:list': Worktree[]
   'worktrees:status': { path: string; status: GitStatus | null }[]
   'worktrees:create': string

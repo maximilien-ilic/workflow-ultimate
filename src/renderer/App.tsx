@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppInfo } from '../shared/ipc'
 import { ProjectSidebar } from './modules/projects/ProjectSidebar'
+import { OrcaImportDialog } from './modules/projects/OrcaImportDialog'
 import { useWorkspace } from './modules/projects/workspace'
 import { ShellLayout } from './modules/shell/ShellLayout'
 import { AgentOverview } from './modules/agents/AgentOverview'
@@ -24,6 +25,7 @@ export function App() {
         )}
         <TerminalArea />
         <AgentOverview />
+        <OrcaImportDialog select={workspace.select} refresh={workspace.refresh} />
       </main>
     </ShellLayout>
   )
