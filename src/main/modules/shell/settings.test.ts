@@ -58,7 +58,7 @@ describe('raccourcis persistés', () => {
   })
 
   it('refuse les collisions avec la palette et les raccourcis par défaut', () => {
-    for (const keybinding of ['Ctrl+K', 'Ctrl+Alt+B', 'ctrl+j']) {
+    for (const keybinding of ['Ctrl+Shift+P', 'Ctrl+Alt+Shift+B', 'ctrl+j']) {
       const payload = { ...defaultSettings, keybindings: { 'shell.toggle-left': keybinding } }
       expect(settingsSchema.safeParse(payload).success).toBe(false)
     }

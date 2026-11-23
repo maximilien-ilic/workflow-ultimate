@@ -23,7 +23,14 @@ test('ouvrir un terminal, y taper, le découper, survivre au rechargement, ferme
   execFileSync('git', ['init', '-q', repo])
   const app = await _electron.launch({
     args: ['out/main/index.js'],
-    env: { ...process.env, XDG_DATA_HOME: join(dir, 'data'), XDG_CONFIG_HOME: join(dir, 'config') },
+    env: {
+      ...process.env,
+      HOME: dir,
+      SHELL: '/bin/bash',
+      INPUTRC: '/dev/null',
+      XDG_DATA_HOME: join(dir, 'data'),
+      XDG_CONFIG_HOME: join(dir, 'config'),
+    },
   })
   const page = await app.firstWindow()
   await page.evaluate((path) => window.wu.invoke('projects:add', { path }), repo)
@@ -34,6 +41,17 @@ test('ouvrir un terminal, y taper, le découper, survivre au rechargement, ferme
   await expect(hosts).toHaveCount(1)
   const first = (await hosts.first().getAttribute('data-terminal-id'))!
   await hosts.first().click()
+  await page.keyboard.type('echo texte à effacer')
+  await page.keyboard.press('Home')
+  await page.keyboard.press('Control+k')
+  const palette = page.getByRole('dialog', { name: 'Palette de commandes' })
+  await expect(palette).toBeHidden()
+  await page.keyboard.type('echo coupe-$((3*7))\n')
+  await expect.poll(() => screenOf(page, first)).toMatch(/^coupe-21$/m)
+  await page.keyboard.press('Control+Shift+p')
+  await expect(palette).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(hosts.first().getByRole('textbox', { name: 'Terminal input' })).toBeFocused()
   await page.keyboard.type('echo clavier-$((2*21))\n')
   await expect.poll(() => screenOf(page, first)).toContain('clavier-42')
 
