@@ -1,9 +1,16 @@
+import { resolve } from 'node:path'
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 
-// Entrées par défaut d'electron-vite : src/main/index.ts, src/preload/index.ts, src/renderer/index.html
+// Le main produit deux fichiers : out/main/index.js et out/main/pty-host.js (processus utilitaire).
 export default defineConfig({
-  main: {},
+  main: {
+    build: {
+      rollupOptions: {
+        input: { index: resolve('src/main/index.ts'), 'pty-host': resolve('src/pty-host/index.ts') },
+      },
+    },
+  },
   preload: {},
   renderer: { plugins: [react()] },
 })

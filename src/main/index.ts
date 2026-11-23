@@ -7,6 +7,7 @@ import { handle } from './modules/shell/ipc'
 import { installMainLogging } from './modules/shell/log'
 import { migrations } from './modules/shell/migrations'
 import { registerProjectHandlers } from './modules/projects/ipc'
+import { startPtyHost } from './modules/terminals/pty-host'
 import { registerSettings } from './modules/shell/settings'
 import { registerSingleInstance } from './modules/shell/single-instance'
 import { createMainWindow } from './modules/shell/window'
@@ -35,7 +36,12 @@ void app.whenReady().then(() => {
     return
   }
   registerProjectHandlers(db)
-  app.on('will-quit', () => db.close())
+  // shortcut: lancé mais pas encore utilisé ; le pont vers le renderer arrive avec #60
+  const ptyHost = startPtyHost()
+  app.on('will-quit', () => {
+    ptyHost.stop()
+    db.close()
+  })
   createMainWindow()
 })
 void app.whenReady().then(registerGlobalShortcuts)
