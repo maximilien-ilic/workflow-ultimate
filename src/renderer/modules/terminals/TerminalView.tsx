@@ -7,6 +7,7 @@ import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useState } from 'react'
 import { terminalStore } from './terminal-store'
+import { chunksForWrite } from './chunks'
 import { unseen } from './unseen'
 
 type Props = {
@@ -121,8 +122,10 @@ export function TerminalView({ id, cwd, active, focusRequest, onFocus }: Props) 
       cursor = Math.max(cursor, offset)
       term.write(fresh, () => ackChars && ack(id, ackChars))
     }
+    let evicted = 0
     const flush = () => {
       for (const e of queue) show(e.data, e.offset, e.data.length)
+      if (evicted) term.write('', () => ack(id, evicted))
       queue = []
       ready = true
     }
@@ -139,14 +142,26 @@ export function TerminalView({ id, cwd, active, focusRequest, onFocus }: Props) 
           // Non acquittée, la file est déjà bornée par le contrôle de flux du main (pause du PTY) ;
           // cette borne-ci n'est qu'une sécurité.
           queue.push(event)
-          if (queue.length > 2000) queue.shift()
+          // Un morceau écarté n'est jamais affiché : ses caractères sont acquittés au vidage de la file,
+          // sinon le PTY resterait en pause.
+          if (queue.length > 2000) evicted += queue.shift()?.data.length ?? 0
         }
       } else if (event.type === 'exit')
         term.write(`\r\n\x1b[2m[processus terminé, code ${event.exitCode}]\x1b[0m\r\n`)
       else term.write(`\r\n\x1b[31m[${event.message}]\x1b[0m\r\n`)
     })
 
-    const input = term.onData((data) => void window.wu.invoke('terminal:write', { id, data }))
+    // Écritures en série : un collage long est découpé (borne du canal) et ses morceaux partent dans l'ordre.
+    let writes = Promise.resolve()
+    const input = term.onData((data) => {
+      for (const chunk of chunksForWrite(data))
+        writes = writes.then(() =>
+          window.wu.invoke('terminal:write', { id, data: chunk }).then(
+            () => undefined,
+            (e: unknown) => fail(`saisie non transmise : ${String(e)}`),
+          ),
+        )
+    })
     const resized = term.onResize(
       ({ cols, rows }) => void window.wu.invoke('terminal:resize', { id, cols, rows }),
     )

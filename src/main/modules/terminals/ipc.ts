@@ -3,7 +3,7 @@ import type { HostEvent } from '../../../shared/pty-protocol'
 import type { TerminalEvent } from '../../../shared/ipc'
 import { handle } from '../shell/ipc'
 import { FlowControl } from './flow-control'
-import { Pending } from './pending'
+import { Pending, PendingTimeout } from './pending'
 import type { PtyHost } from './pty-host'
 
 // Variables git qui redirigent vers un autre dépôt : le shell d'un worktree doit voir son propre dépôt.
@@ -54,6 +54,8 @@ export type Terminals = {
 export function registerTerminalHandlers(host: PtyHost): Terminals {
   const exitListeners: ((id: string, exitCode: number) => void)[] = []
   const owners = new Map<string, WebContents>() // terminal → fenêtre qui reçoit sa sortie
+  const releasing = new Set<string>() // lancements expirés, en attente de fermeture confirmée
+  const starting = new Set<string>() // lancements en cours (pas encore confirmés)
   const flow = new FlowControl()
   const replays = new Pending<{ data: string; offset: number }>()
   const spawns = new Pending<number>()
@@ -75,6 +77,13 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
       flow.forget(event.id)
       for (const listener of exitListeners) listener(event.id, event.exitCode)
     }
+    // Fermeture d'un lancement expiré : confirmée, ou refusée parce que le PTY n'a jamais existé.
+    if (
+      (event.type === 'closed' || (event.type === 'error' && event.request === 'kill')) &&
+      releasing.delete(event.id)
+    )
+      return
+    if (releasing.has(event.id)) return // confirmation ou sortie tardive d'un lancement expiré : ignorée
     // Fermeture confirmée par le pty-host (qu'il ait tourné ou non) : le main oublie le terminal.
     if (event.type === 'closed') {
       owners.delete(event.id)
@@ -83,14 +92,26 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
     }
     sendTo(event.id, event)
   })
-  host.events.on('restarted', () => {
-    const lost = new Error('pty-host redémarré : terminal perdu')
+  // Perte du pty-host : tous ses PTY ont disparu. Attentes rejetées, fenêtres prévenues, et chaque terminal
+  // signalé comme terminé (code -1) pour que les agents passent en erreur et restent reprenables.
+  function hostLost(reason: string) {
+    const lost = new Error(reason)
     spawns.failAll(lost)
     replays.failAll(lost)
     for (const owner of new Set(owners.values()))
       if (!owner.isDestroyed())
         owner.send('terminal:event', { type: 'host-restarted' } satisfies TerminalEvent)
+    // Un lancement en cours échoue déjà par son attente : seuls les terminaux qui tournaient sont « terminés ».
+    for (const id of owners.keys())
+      if (!starting.has(id)) for (const listener of exitListeners) listener(id, -1)
     owners.clear()
+    releasing.clear()
+  }
+  let unavailable = false
+  host.events.on('restarted', () => hostLost('pty-host redémarré : terminal perdu'))
+  host.events.on('gaveUp', () => {
+    unavailable = true
+    hostLost('pty-host arrêté après des plantages répétés : redémarrer l’appli')
   })
 
   const owned = (id: string, sender: WebContents) => {
@@ -99,16 +120,25 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
 
   async function spawn({ id, owner, ...process }: SpawnSpec): Promise<number> {
     if (owners.has(id)) throw new Error(`Terminal ${id} déjà ouvert`)
+    if (releasing.has(id)) throw new Error(`Terminal ${id} en cours de fermeture, réessayer`)
+    if (unavailable) throw new Error('pty-host indisponible (plantages répétés) : redémarrer l’appli')
     owners.set(id, owner)
     const spawned = spawns.wait(id, 5000)
     host.send({ type: 'spawn', id, ...process })
+    starting.add(id)
     try {
       return await spawned
     } catch (error) {
-      owners.delete(id) // échec du lancement : l'id est libéré, pas de faux succès
-      // Un lancement confirmé après le délai laisserait un PTY orphelin : on le ferme d'office.
-      host.send({ type: 'kill', id })
+      owners.delete(id) // échec du lancement : pas de faux succès
+      if (error instanceof PendingTimeout) {
+        // Le pty-host a pu lancer le PTY sans répondre à temps : on le ferme, et l'id reste réservé
+        // jusqu'à la confirmation, pour qu'une relance ne récupère pas la réponse tardive du premier.
+        releasing.add(id)
+        host.send({ type: 'kill', id })
+      }
       throw error
+    } finally {
+      starting.delete(id)
     }
   }
 
