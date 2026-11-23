@@ -7,8 +7,13 @@ const directories = {
   state: ['XDG_STATE_HOME', '.local/state'],
 } as const
 
-export function appDirectory(kind: keyof typeof directories): string {
+// Une valeur XDG relative est ignorée (spec XDG) : sinon le dossier dépendrait du répertoire de lancement.
+export function appDirectory(
+  kind: keyof typeof directories,
+  env: NodeJS.ProcessEnv = process.env,
+  home = homedir(),
+): string {
   const [variable, fallback] = directories[kind]
-  const configured = process.env[variable] ?? ''
-  return join(isAbsolute(configured) ? configured : join(homedir(), fallback), 'workflow-ultimate')
+  const configured = env[variable] ?? ''
+  return join(isAbsolute(configured) ? configured : join(home, fallback), 'workflow-ultimate')
 }
