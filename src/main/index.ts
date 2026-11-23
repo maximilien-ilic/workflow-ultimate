@@ -6,6 +6,7 @@ import { registerGlobalShortcuts } from './modules/shell/global-shortcuts'
 import { handle } from './modules/shell/ipc'
 import { installMainLogging } from './modules/shell/log'
 import { migrations } from './modules/shell/migrations'
+import { registerProjectHandlers } from './modules/projects/ipc'
 import { registerSettings } from './modules/shell/settings'
 import { registerSingleInstance } from './modules/shell/single-instance'
 import { createMainWindow } from './modules/shell/window'
@@ -33,6 +34,7 @@ void app.whenReady().then(() => {
     app.exit(1)
     return
   }
+  registerProjectHandlers(db)
   app.on('will-quit', () => db.close())
   createMainWindow()
 })
