@@ -1,5 +1,14 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -71,6 +80,35 @@ describe('worktrees', () => {
     expect(existsSync(join(path, 'travail.txt'))).toBe(true)
     await removeWorktree(repo, path, { force: true })
     expect(existsSync(path)).toBe(false)
+  })
+
+  it('crée et supprime normalement quand le dossier des workspaces passe par un lien symbolique', async () => {
+    mkdirSync(join(dir, 'vrai-home'))
+    symlinkSync(join(dir, 'vrai-home'), join(dir, 'home-lien'))
+    const path = await createWorktree(repo, join(dir, 'home-lien'), { branch: 'feat/f', create: true })
+    expect(path).toBe(join(dir, 'vrai-home', 'app', 'feat-f'))
+    await removeWorktree(repo, path, { force: false })
+    expect(existsSync(path)).toBe(false)
+  })
+
+  it('refuse un chemin dont un parent a été remplacé par un lien symbolique', async () => {
+    const path = await createWorktree(repo, workspaces, { branch: 'feat/c', create: true })
+    // Le dossier du projet dans workspaces devient un lien vers un autre dossier qui imite le worktree.
+    const elsewhere = join(dir, 'ailleurs')
+    renameSync(join(workspaces, 'app'), elsewhere)
+    symlinkSync(elsewhere, join(workspaces, 'app'))
+    writeFileSync(join(elsewhere, 'feat-c', 'sentinelle'), 'à garder')
+    await expect(removeWorktree(repo, path, { force: true })).rejects.toThrow(/lien symbolique/)
+    expect(existsSync(join(elsewhere, 'feat-c', 'sentinelle'))).toBe(true)
+  })
+
+  it("ne retire pas l'enregistrement d'un autre worktree temporairement absent", async () => {
+    const a = await createWorktree(repo, workspaces, { branch: 'feat/d', create: true })
+    const b = await createWorktree(repo, workspaces, { branch: 'feat/e', create: true })
+    renameSync(b, `${b}.deplace`) // ex. disque amovible démonté
+    await removeWorktree(repo, a, { force: false })
+    expect((await listWorktrees(repo)).map((w) => w.path)).toContain(b)
+    renameSync(`${b}.deplace`, b)
   })
 
   it("ne supprime jamais le worktree principal ni un dossier qui n'est pas un worktree du projet", async () => {

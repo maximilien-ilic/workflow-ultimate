@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, realpath } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Worktree } from '../../../shared/ipc'
 import { runGit } from './git-env'
@@ -65,9 +65,12 @@ export async function createWorktree(
   } catch {
     throw new Error(`Nom de branche invalide : ${opts.branch}`)
   }
-  const path = join(workspaces, basename(repo), opts.branch.replaceAll('/', '-'))
+  const wanted = join(workspaces, basename(repo), opts.branch.replaceAll('/', '-'))
+  await mkdir(dirname(wanted), { recursive: true })
+  // Chemin réel du parent : git enregistre un chemin sans lien symbolique (HOME peut en être un),
+  // ce qui permet à removeWorktree de refuser tout chemin redirigé.
+  const path = join(await realpath(dirname(wanted)), basename(wanted))
   if (existsSync(path)) throw new Error(`${path} existe déjà`)
-  await mkdir(dirname(path), { recursive: true })
   const args = opts.create
     ? ['worktree', 'add', '-b', opts.branch, path, ...(opts.base ? [opts.base] : [])]
     : ['worktree', 'add', path, opts.branch]
@@ -92,6 +95,11 @@ export async function removeWorktree(repo: string, path: string, opts: { force: 
     const files = status.split('\0').filter(Boolean).length
     if (files > 0) throw new DirtyWorktreeError(path, files)
   }
+  // Juste avant de supprimer : le chemin enregistré ne doit passer par aucun lien symbolique,
+  // sinon la suppression viserait un autre dossier que le worktree.
+  const real = await realpath(path).catch(() => path)
+  if (real !== path) throw new Error(`${path} passe par un lien symbolique (${real}) : suppression refusée`)
+  // `worktree remove` nettoie l'enregistrement de CE worktree ; pas de `prune` global, qui effacerait
+  // aussi les worktrees temporairement absents (disque démonté…).
   await runGit(repo, ['worktree', 'remove', ...(opts.force ? ['--force'] : []), path], 60_000)
-  await runGit(repo, ['worktree', 'prune'])
 }
