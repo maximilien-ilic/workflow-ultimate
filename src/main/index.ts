@@ -1,13 +1,19 @@
 import { app, dialog } from 'electron'
 import { join } from 'node:path'
 import { dataDir, openDatabase } from './modules/shell/db'
+import { buildDiagnosticsReport } from './modules/shell/diagnostics'
+import { registerGlobalShortcuts } from './modules/shell/global-shortcuts'
 import { handle } from './modules/shell/ipc'
+import { installMainLogging } from './modules/shell/log'
 import { migrations } from './modules/shell/migrations'
 import { registerSettings } from './modules/shell/settings'
 import { registerSingleInstance } from './modules/shell/single-instance'
 import { createMainWindow } from './modules/shell/window'
 
 if (!registerSingleInstance()) app.exit(0)
+
+installMainLogging()
+handle('diagnostics:report', buildDiagnosticsReport)
 
 handle('app:info', () => ({
   name: app.getName(),
@@ -30,4 +36,5 @@ void app.whenReady().then(() => {
   app.on('will-quit', () => db.close())
   createMainWindow()
 })
+void app.whenReady().then(registerGlobalShortcuts)
 app.on('window-all-closed', () => app.quit())
