@@ -2,7 +2,10 @@ import { app, dialog, shell } from 'electron'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { dataDir, openDatabase } from './modules/shell/db'
+import { buildDiagnosticsReport } from './modules/shell/diagnostics'
+import { registerGlobalShortcuts } from './modules/shell/global-shortcuts'
 import { handle } from './modules/shell/ipc'
+import { installMainLogging } from './modules/shell/log'
 import { migrations } from './modules/shell/migrations'
 import { registerAgentHandlers } from './modules/agents/sessions'
 import { agentSocketPath, startAgentSocket } from './modules/agents/socket'
@@ -14,6 +17,9 @@ import { registerSingleInstance } from './modules/shell/single-instance'
 import { createMainWindow } from './modules/shell/window'
 
 if (!registerSingleInstance()) app.exit(0)
+
+installMainLogging()
+handle('diagnostics:report', buildDiagnosticsReport)
 
 handle('app:info', () => ({
   name: app.getName(),
@@ -72,4 +78,5 @@ void app.whenReady().then(async () => {
   })
   createMainWindow()
 })
+void app.whenReady().then(registerGlobalShortcuts)
 app.on('window-all-closed', () => app.quit())
