@@ -5,6 +5,7 @@ import { settingsSchema, type Settings } from './settings'
 // Ajouter un canal = un schéma de requête + un type de réponse.
 export const ipcRequestSchemas = {
   'app:info': z.object({}).strict(),
+  'diagnostics:report': z.object({}).strict(),
   'settings:get': z.object({}).strict(),
   'settings:set': settingsSchema,
 } satisfies Record<string, z.ZodType>
@@ -13,6 +14,7 @@ export type AppInfo = { name: string; version: string; electron: string; node: s
 
 interface IpcResponses {
   'app:info': AppInfo
+  'diagnostics:report': string
   'settings:get': Settings
   'settings:set': null
 }
