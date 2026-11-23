@@ -44,6 +44,12 @@ window.wu.onAgentEvent(({ terminalId, state }) => {
 const earlyExits = new Set<string>()
 
 window.wu.onTerminalEvent((event) => {
+  // pty-host perdu : tous les processus d'agents ont disparu, « Reprendre » doit être proposé partout.
+  if (event.type === 'host-restarted') {
+    for (const [terminalId, info] of agents) agents.set(terminalId, { ...info, exited: true })
+    changed()
+    return
+  }
   if (event.type !== 'exit') return
   const info = agents.get(event.id)
   if (!info) {
