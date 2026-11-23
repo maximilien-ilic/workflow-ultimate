@@ -1,5 +1,6 @@
 import { execFile, type ExecFileException } from 'node:child_process'
 import { promisify } from 'node:util'
+import { gitEnv } from './git-env'
 
 const exec = promisify(execFile)
 
@@ -72,7 +73,7 @@ export async function gitStatus(path: string): Promise<GitStatus> {
         encoding: 'utf8',
         timeout: 5_000,
         maxBuffer: 16 * 1024 * 1024,
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C' },
+        env: gitEnv(),
       },
     )
     return parseGitStatus(stdout)
