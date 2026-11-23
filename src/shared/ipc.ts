@@ -13,6 +13,7 @@ export const ipcRequestSchemas = {
   'projects:remove': z.object({ id: z.uuid() }).strict(),
   // Ouvre le sélecteur de dossier du système : `repo` ajoute un dépôt, `scan` ajoute tous ceux trouvés dedans.
   'projects:pick': z.object({ mode: z.enum(['repo', 'scan']) }).strict(),
+  'diagnostics:report': z.object({}).strict(),
   'settings:get': z.object({}).strict(),
   'settings:set': settingsSchema,
   'terminal:create': z.object({ id: z.uuid(), cwd: absolutePath, cols: dimension, rows: dimension }).strict(),
@@ -42,6 +43,7 @@ interface IpcResponses {
   'terminal:kill': null
   'terminal:attach': string
   'terminal:ack': null
+  'diagnostics:report': string
   'settings:get': Settings
   'settings:set': null
 }
