@@ -12,6 +12,7 @@ export const ipcRequestSchemas = {
   'projects:remove': z.object({ id: z.uuid() }).strict(),
   // Ouvre le sélecteur de dossier du système : `repo` ajoute un dépôt, `scan` ajoute tous ceux trouvés dedans.
   'projects:pick': z.object({ mode: z.enum(['repo', 'scan']) }).strict(),
+  'diagnostics:report': z.object({}).strict(),
   'settings:get': z.object({}).strict(),
   'settings:set': settingsSchema,
 } satisfies Record<string, z.ZodType>
@@ -27,6 +28,7 @@ interface IpcResponses {
   'projects:add': Project
   'projects:remove': null
   'projects:pick': PickResult
+  'diagnostics:report': string
   'settings:get': Settings
   'settings:set': null
 }
