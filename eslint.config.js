@@ -5,7 +5,7 @@ const reactHooks = require('eslint-plugin-react-hooks')
 const tseslint = require('typescript-eslint')
 
 module.exports = defineConfig(
-  globalIgnores(['out/', 'dist/', 'node_modules/']),
+  globalIgnores(['out/', 'dist/', 'node_modules/', '.agents/']),
   js.configs.recommended,
   {
     files: ['eslint.config.js'],

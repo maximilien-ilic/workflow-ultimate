@@ -15,7 +15,7 @@ describe('validated', () => {
     await expect(validated('app:info', fn, trustAll)(eventFrom(FILE_RENDERER), {})).resolves.toEqual(
       expect.objectContaining({ name: 'wu' }),
     )
-    expect(fn).toHaveBeenCalledWith({})
+    expect(fn).toHaveBeenCalledWith({}, expect.anything())
   })
 
   it.each([

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type DragEvent } from 'react'
 import type { PickResult, Project } from '../../../shared/ipc'
+import { startAgent } from '../agents/agent-store'
+import { terminalStore } from '../terminals/terminal-store'
 
 // shortcut: panneau sans style ni barre latérale ; la disposition (#8) et la barre latérale (#11) le remplaceront
 export function ProjectsPanel() {
@@ -56,6 +58,24 @@ export function ProjectsPanel() {
           {projects.map((p) => (
             <li key={p.id}>
               <strong>{p.name}</strong> <small>{p.path}</small>{' '}
+              <button
+                aria-label={`Claude dans ${p.name}`}
+                onClick={() =>
+                  run(
+                    startAgent(p.path, `Claude · ${p.name}`).then((id) =>
+                      terminalStore.openAttachedTab(p.path, `Claude · ${p.name}`, id),
+                    ),
+                  )
+                }
+              >
+                Claude
+              </button>{' '}
+              <button
+                aria-label={`Terminal dans ${p.name}`}
+                onClick={() => terminalStore.openTab(p.path, p.name)}
+              >
+                Terminal
+              </button>{' '}
               <button
                 aria-label={`Retirer ${p.name}`}
                 onClick={() => run(window.wu.invoke('projects:remove', { id: p.id }).then(refresh))}

@@ -45,7 +45,11 @@ test("un dossier qui n'est pas un dépôt git est refusé avec un message clair"
   const app = await launch()
   const window = await app.firstWindow()
   const error = await window.evaluate(
-    (path) => window.wu.invoke('projects:add', { path }).then(() => 'accepté', (e: Error) => e.message),
+    (path) =>
+      window.wu.invoke('projects:add', { path }).then(
+        () => 'accepté',
+        (e: Error) => e.message,
+      ),
     plain,
   )
   expect(error).toContain("n'est pas un dépôt git")

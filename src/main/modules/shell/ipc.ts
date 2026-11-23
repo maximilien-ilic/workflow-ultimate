@@ -5,6 +5,7 @@ import { rendererUrl } from './window'
 
 type Handler<C extends IpcChannel> = (
   req: z.output<(typeof ipcRequestSchemas)[C]>,
+  event: IpcMainInvokeEvent,
 ) => IpcResponse<C> | Promise<IpcResponse<C>>
 
 export class IpcValidationError extends Error {
@@ -43,7 +44,7 @@ export function validated<C extends IpcChannel>(
     const parsed = schema.safeParse(raw)
     if (!parsed.success) throw new IpcValidationError(channel, z.prettifyError(parsed.error))
     // Le schéma est celui du canal C : le cast redonne à TypeScript ce lien qu'il perd avec un générique.
-    return fn(parsed.data as z.output<(typeof ipcRequestSchemas)[C]>)
+    return fn(parsed.data as z.output<(typeof ipcRequestSchemas)[C]>, event)
   }
 }
 

@@ -7,6 +7,10 @@ toolsets:
   appimage: '1.0.3'
 files:
   - out/{main,preload,renderer}/**/*
+# Appelé par les hooks des agents, hors de l'asar (exécuté par le Node embarqué).
+extraResources:
+  - from: resources/wu-notify
+    to: wu-notify
 linux:
   target:
     - AppImage
