@@ -12,6 +12,10 @@ describe('shellEnv', () => {
       ELECTRON_RENDERER_URL: 'x',
       GIT_DIR: '/autre/.git',
       GIT_WORK_TREE: '/autre',
+      GIT_CONFIG_PARAMETERS: "'core.hooksPath'='/tmp/x'",
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'core.pager',
+      GIT_CONFIG_VALUE_0: 'evil',
       GIT_EDITOR: 'vim',
       CHROME_DESKTOP: 'y',
     })

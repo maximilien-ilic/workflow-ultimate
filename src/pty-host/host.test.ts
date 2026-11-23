@@ -57,8 +57,14 @@ describe('pty-host', () => {
     host.handle({ type: 'spawn', id: 't1', file: 'sh', args: [], ...base })
     host.handle({ type: 'write', id: 'inconnu', data: 'x' })
     host.handle({ type: 'spawn', id: 't2', file: 'sh', args: [], ...base, cwd: '/nexiste/pas' })
-    const errors = events.filter((e) => e.type === 'error').map((e) => e.id)
-    expect(errors).toEqual(['t1', 'inconnu', 't2'])
+    const errors = events
+      .filter((e) => e.type === 'error')
+      .map((e) => [e.id, (e as { request: string }).request])
+    expect(errors).toEqual([
+      ['t1', 'spawn'],
+      ['inconnu', 'write'],
+      ['t2', 'spawn'],
+    ])
     host.handle({ type: 'kill', id: 't1' })
   })
 

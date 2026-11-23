@@ -27,7 +27,8 @@ export function shellEnv(env: NodeJS.ProcessEnv = process.env): Record<string, s
       value !== undefined &&
       !key.startsWith('ELECTRON_') &&
       key !== 'CHROME_DESKTOP' &&
-      !GIT_REDIRECTS.has(key)
+      !GIT_REDIRECTS.has(key) &&
+      !/^GIT_CONFIG_(PARAMETERS|COUNT|KEY_\d+|VALUE_\d+)$/.test(key) // config git injectée par l'environnement
     )
       clean[key] = value
   return { ...clean, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'workflow-ultimate' }
@@ -37,7 +38,6 @@ export function registerTerminalHandlers(host: PtyHost): void {
   const owners = new Map<string, WebContents>() // terminal → fenêtre qui reçoit sa sortie
   const flow = new FlowControl()
   const replays = new Pending<{ data: string; offset: number }>()
-  const closing = new Set<string>() // fermés par le renderer : oubliés dès la fin du processus
   const spawns = new Pending<number>()
 
   const sendTo = (id: string, event: TerminalEvent) => {
@@ -48,15 +48,19 @@ export function registerTerminalHandlers(host: PtyHost): void {
   host.events.on('event', (event: HostEvent) => {
     if (event.type === 'replay') return replays.settle(event.id, { data: event.data, offset: event.offset })
     if (event.type === 'spawned') return spawns.settle(event.id, event.pid)
-    if (event.type === 'error') {
-      spawns.fail(event.id, new Error(event.message))
-      replays.fail(event.id, new Error(event.message))
-    }
+    // Seule l'attente qui correspond à la requête en erreur échoue (une écriture ratée ne casse pas un rejeu).
+    if (event.type === 'error' && event.request === 'spawn') spawns.fail(event.id, new Error(event.message))
+    if (event.type === 'error' && event.request === 'replay') replays.fail(event.id, new Error(event.message))
     if (event.type === 'data' && flow.onData(event.id, event.data.length) === 'pause')
       host.send({ type: 'pause', id: event.id })
     if (event.type === 'exit') flow.forget(event.id)
+    // Fermeture confirmée par le pty-host (qu'il ait tourné ou non) : le main oublie le terminal.
+    if (event.type === 'closed') {
+      owners.delete(event.id)
+      flow.forget(event.id)
+      return
+    }
     sendTo(event.id, event)
-    if (event.type === 'exit' && closing.delete(event.id)) owners.delete(event.id)
   })
   host.events.on('restarted', () => {
     const lost = new Error('pty-host redémarré : terminal perdu')
@@ -82,6 +86,8 @@ export function registerTerminalHandlers(host: PtyHost): void {
       return { pid: await spawned }
     } catch (error) {
       owners.delete(id) // échec du lancement : l'id est libéré, pas de faux succès
+      // Un lancement confirmé après le délai laisserait un PTY orphelin : on le ferme d'office.
+      host.send({ type: 'kill', id })
       throw error
     }
   })
@@ -97,7 +103,6 @@ export function registerTerminalHandlers(host: PtyHost): void {
   })
   handle('terminal:kill', ({ id }, event) => {
     owned(id, event.sender)
-    closing.add(id)
     host.send({ type: 'kill', id })
     return null
   })
