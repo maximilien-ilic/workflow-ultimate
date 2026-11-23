@@ -19,8 +19,7 @@ function statusText(status: WorktreeSelection['worktree']['status']): string {
 }
 
 export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
-  const { groups, selected, select, refresh, error } = workspace
-  const [collapsed, setCollapsed] = useState(new Set<string>())
+  const { groups, selected, select, refresh, error, collapsed, expand } = workspace
   const [focusKey, setFocusKey] = useState<string>()
   const [messages, setMessages] = useState<string[]>([])
   const [creating, setCreating] = useState(false)
@@ -65,15 +64,6 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
         result.status === 'rejected' ? [{ path: paths[index] ?? '', reason: String(result.reason) }] : [],
       )
       await report({ added: [], rejected })
-    })
-  }
-
-  function expand(id: string, expanded: boolean) {
-    setCollapsed((previous) => {
-      const next = new Set(previous)
-      if (expanded) next.delete(id)
-      else next.add(id)
-      return next
     })
   }
 

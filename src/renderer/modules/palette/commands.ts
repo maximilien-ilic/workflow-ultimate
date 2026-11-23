@@ -67,7 +67,10 @@ function fuzzyScore(title: string, query: string): number {
   return title.length + position
 }
 
-export function findCommands(commands: readonly Command[], query: string): readonly Command[] {
+export function findCommands<T extends Pick<Command, 'title'>>(
+  commands: readonly T[],
+  query: string,
+): readonly T[] {
   const search = normalize(query.trim())
   if (!search) return commands
   return commands
