@@ -20,6 +20,6 @@ Appli de bureau Electron + React + TS pour piloter des agents IA sous KDE Plasma
 
 Ce sont des **références**, pas des règles. En cas de désaccord, AGENTS.md, la spec et les ADR priment. Revues de Codex sur #53 :
 - Ne jamais lancer les scripts des skills (scaffold, génération) : ils écrasent des fichiers existants.
-- Ne jamais désactiver le sandbox Electron ou Chromium, ni lancer des tests en root, même si un skill le suggère pour la CI.
+- Ne jamais désactiver le sandbox dans l'appli elle-même (`webPreferences`, `app.commandLine`), ni lancer des tests en root. Seule exception : `--no-sandbox` passé par un test e2e au processus de test, uniquement parce que le runner CI isolé ne peut pas initialiser le sandbox Chromium, avec un commentaire `shortcut:` (cas de `tests/e2e/single-instance.spec.ts`).
 - `shell.openExternal` et les permissions : refus par défaut, avec une liste exacte d'URL ou d'origines autorisées, vérifiées sur le frame qui fait la demande.
 - Ne jamais écrire de sessions, cookies ou dumps de débogage dans le repo.
