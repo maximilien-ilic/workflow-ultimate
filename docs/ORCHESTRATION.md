@@ -50,7 +50,7 @@ issue Ready ──► worktree feat/<n>-slug ──► agent (Claude Code ou Cod
 2. **Isoler** : un worktree par issue (avec Orca pour l'instant, puis avec l'appli elle-même dès que M2 sera fini).
 3. **Briefer l'agent** avec un prompt court : « Implémente #n. Lis AGENTS.md et la section de SPEC.md liée. Suis TDD. Ouvre une PR qui ferme #n. »
 4. **Parallélisme** : 3 agents au maximum en même temps, sur des modules différents, pour éviter les conflits.
-5. **Review** : `/ponytail-review` sur la PR, puis ta validation. Un agent ne fusionne jamais sa propre PR.
+5. **Review et fusion** : l'autre agent relit la PR (Claude relit Codex, Codex relit Claude) et conclut par « OK pour fusion » ou par des points bloquants. Claude fusionne seulement quand la CI est verte **et** que cette relecture ne laisse aucun point bloquant (décision du 2026-11-23). La relecture est notée en commentaire sur la PR. L'humain garde un droit de veto et peut annuler une fusion.
 6. **Fin de milestone** : `/ponytail-audit` sur le repo, et la spec est mise à jour si quelque chose a changé.
 
 ## 6. Branches et commits
@@ -70,6 +70,11 @@ issue Ready ──► worktree feat/<n>-slug ──► agent (Claude Code ou Cod
 | Review | `ponytail-review`, `code-review-and-quality` |
 | Fin de milestone | `ponytail-audit`, `ponytail-debt` |
 | Comprendre le code (une fois qu'il y en a) | `graphify` sur le repo, régénéré à chaque fin de milestone |
+| Code Electron (main, preload, IPC, packaging) | `electron-best-practices` (skill projet) |
+| Composants React | `vercel-react-best-practices` (skill projet) |
+| Tests e2e Playwright | `playwright-best-practices` (skill projet) |
+
+Les skills projet sont dans `.agents/skills/` (lus par Codex), avec des liens dans `.claude/skills/` (lus par Claude). Versions figées dans `skills-lock.json`, mise à jour : `npx skills update -p`.
 
 ## 8. Équipe d'agents : Claude coordinateur + Codex worker
 
@@ -95,4 +100,15 @@ orca orchestration worker-start --agent codex \
 **Règles de parallélisme** :
 - 2 workers Codex au maximum en plus du coordinateur, chacun sur des zones de fichiers séparées, déclarées dans sa spec.
 - Fichiers partagés (`package.json`, `package-lock.json`) : le dernier qui fusionne rebase et relance `npm install`.
-- Revue croisée : Claude relit les PR de Codex (`/ponytail-review`), et Codex relit celles de Claude (worker de review en lecture seule). La fusion reste humaine.
+- Revue croisée : Claude relit les PR de Codex, et Codex relit celles de Claude (worker de review en lecture seule). Claude fusionne ensuite, selon la règle du §5.
+
+## 9. Analyseur de push (automatisation Orca)
+
+Après chaque push sur `main`, un agent **Codex** analyse les nouveaux commits et en tire des tickets :
+à corriger, à refaire, à optimiser, à supprimer, à ajouter.
+
+- **Déclenchement** : automatisation Orca « workflow-ultimate — analyseur de push (Codex) », toutes les 10 minutes.
+  Un précheck (`~/.local/share/workflow-ultimate-review/review_gate.py check`) ne lance l'agent que si le dernier commit de `main` n'a pas encore été analysé.
+- **Mandat** : `~/.local/share/workflow-ultimate-review/push-review-prompt.md`. Il analyse sans corriger, crée au plus 5 tickets par exécution (labels `push-review` + type + area), met à jour un ticket existant plutôt que d'en créer un doublon, et ne fusionne rien.
+- **Traçabilité** : un compte rendu par exécution sur le journal #51, et le statut GitHub `codex/push-review=success` sur le commit analysé (« analysé », pas « sans défaut »).
+- **Gérer** : `orca automations list`, `orca automations runs --id <id>`, `orca automations edit --id <id> --disabled`.
