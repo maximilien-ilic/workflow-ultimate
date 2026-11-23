@@ -12,7 +12,7 @@ Taille : S ≈ moins d'une demi-journée d'agent, M ≈ une session, L ≈ à re
 | 0.2 | ESLint + Prettier + Vitest + script `typecheck` | shell | S | ✓ |
 | 0.3 | CI GitHub Actions : typecheck, lint, test, e2e sous xvfb | shell | S | ✓ |
 | 0.4 | Contrat IPC typé + validation zod côté main + 1 test | shell | M | ✓ |
-| 0.5 | Couche SQLite (better-sqlite3) + migrations numérotées | shell | M | ✓ |
+| 0.5 | Couche SQLite (`node:sqlite`, ADR-0002) + migrations numérotées | shell | M | ✓ |
 | 0.6 | Packaging electron-builder : AppImage + pacman + `.desktop` | shell | S | ✓ |
 | 0.7 | ~~Reporté à M5 (style traité plus tard)~~ Tokens du design system + thème sombre/clair + composants de base (Button, Input, Tabs, Panel) | shell | M | ✓ |
 
