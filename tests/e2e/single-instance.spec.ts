@@ -19,8 +19,12 @@ test('routes a second launch to the existing window', async () => {
     const page = await app.firstWindow()
     await expect(page.getByRole('heading', { name: 'Workflow Ultimate', exact: true })).toBeVisible()
     const window = await app.browserWindow(page)
-    await window.evaluate((win) => win.hide())
-    expect(await window.evaluate((win) => win.isVisible())).toBe(false)
+    const hidden = await window.evaluate(async (win) => {
+      if (!win.isVisible()) await new Promise<void>((resolve) => win.once('show', () => resolve()))
+      win.hide()
+      return !win.isVisible()
+    })
+    expect(hidden).toBe(true)
 
     const executable = await app.evaluate(() => process.execPath)
     await exec(executable, [...args, '--action', 'window.show'], { env, timeout: 5_000 })

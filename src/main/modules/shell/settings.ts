@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { dirname, isAbsolute, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { defaultSettings } from '../../../shared/layout-defaults'
 import { decodeSettings, type Settings } from '../../../shared/settings'
 import { handle } from './ipc'
+import { appDirectory } from './paths'
 
 export function readSettings(file: string): Settings {
   try {
@@ -30,12 +30,7 @@ export function writeSettings(file: string, settings: Settings): void {
 }
 
 export function registerSettings(): void {
-  const config = process.env['XDG_CONFIG_HOME'] ?? ''
-  const file = join(
-    isAbsolute(config) ? config : join(homedir(), '.config'),
-    'workflow-ultimate',
-    'settings.json',
-  )
+  const file = join(appDirectory('config'), 'settings.json')
   handle('settings:get', () => readSettings(file))
   handle('settings:set', (settings) => {
     writeSettings(file, settings)
