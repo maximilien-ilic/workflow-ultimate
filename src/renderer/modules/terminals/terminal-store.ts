@@ -80,6 +80,12 @@ export const terminalStore = {
       activeTab: tabId,
     })
   },
+  // Affiche l'onglet qui contient ce volet et le rend actif (vue d'ensemble, agent suivant en attente).
+  showPane(paneId: string) {
+    const tab = state.tabs.find((t) => paneIds(t.tree).includes(paneId))
+    if (tab) this.focusPane(tab.id, paneId)
+  },
+  activePane: () => activeTabOf()?.activePane ?? null,
   selectTab(index: number) {
     const tab = state.tabs[index]
     if (tab) set({ tabs: state.tabs, activeTab: tab.id })

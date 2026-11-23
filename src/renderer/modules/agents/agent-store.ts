@@ -53,6 +53,7 @@ export const agentStore = {
   },
   version: () => version,
   get: (terminalId: string) => agents.get(terminalId),
+  all: () => [...agents],
   stateOf: (terminalId: string) => agents.get(terminalId)?.state,
   started(terminalId: string, info: Omit<AgentInfo, 'startedAt' | 'state' | 'exited'>, state: AgentState) {
     // Un événement a pu arriver avant la réponse de agents:start : il est plus récent, on le garde.

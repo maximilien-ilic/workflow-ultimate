@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppInfo } from '../shared/ipc'
 import { ProjectsPanel } from './modules/projects/ProjectsPanel'
+import { AgentOverview } from './modules/agents/AgentOverview'
 import { TerminalArea } from './modules/terminals/TerminalArea'
 
 export function App() {
@@ -19,6 +20,7 @@ export function App() {
       )}
       <ProjectsPanel />
       <TerminalArea />
+      <AgentOverview />
     </main>
   )
 }
