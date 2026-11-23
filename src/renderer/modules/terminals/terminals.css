@@ -1,6 +1,9 @@
 /* shortcut: style minimal, le style visuel est reporté à M5 */
 .terminal-area { display: flex; flex-direction: column; flex: 1; min-height: 320px; }
-.terminal-tab { display: flex; flex: 1; min-height: 0; }
+.terminal-tab { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.terminal-tab > .terminal-split, .terminal-tab > .terminal-pane { flex: 1; }
+.agent-header { display: flex; gap: 12px; align-items: center; padding: 4px 8px; font-size: 13px; }
+.agent-header[data-state='waiting'] .agent-state { font-weight: 600; }
 .terminal-tab[hidden] { display: none; }
 .terminal-split { display: flex; flex: 1; min-width: 0; min-height: 0; gap: 2px; }
 .terminal-split[data-dir='column'] { flex-direction: column; }
@@ -9,3 +12,5 @@
 .terminal-host { flex: 1; min-width: 0; min-height: 0; }
 .terminal-search { position: absolute; top: 4px; right: 4px; z-index: 2; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.agent-overview { min-width: 60vw; }
+.agent-overview pre { margin: 2px 0 10px; font-size: 11px; max-height: 6em; overflow: hidden; }

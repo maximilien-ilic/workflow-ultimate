@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type DragEvent } from 'react'
-import type { AgentSession, PickResult, Project } from '../../../shared/ipc'
-import { agentStore } from '../agents/agent-store'
+import type { PickResult, Project } from '../../../shared/ipc'
+import { startAgent } from '../agents/agent-store'
 import { terminalStore } from '../terminals/terminal-store'
 
 // shortcut: panneau sans style ni barre latérale ; la disposition (#8) et la barre latérale (#11) le remplaceront
@@ -18,17 +18,6 @@ export function ProjectsPanel() {
     return refresh()
   }
   const run = (task: Promise<unknown>) => task.catch((e: unknown) => setMessages([String(e)]))
-  const startAgent = (project: Project, agent: AgentSession['agent'], label: string) => {
-    const terminalId = crypto.randomUUID()
-    run(
-      window.wu
-        .invoke('agents:start', { terminalId, cwd: project.path, agent, cols: 120, rows: 30 })
-        .then(() => {
-          agentStore.started(terminalId)
-          terminalStore.openAttachedTab(project.path, `${label} · ${project.name}`, terminalId)
-        }),
-    )
-  }
 
   const onDrop = (event: DragEvent) => {
     event.preventDefault()
@@ -71,11 +60,26 @@ export function ProjectsPanel() {
               <strong>{p.name}</strong> <small>{p.path}</small>{' '}
               <button
                 aria-label={`Claude dans ${p.name}`}
-                onClick={() => startAgent(p, 'claude-code', 'Claude')}
+                onClick={() =>
+                  run(
+                    startAgent(p.path, `Claude · ${p.name}`).then((id) =>
+                      terminalStore.openAttachedTab(p.path, `Claude · ${p.name}`, id),
+                    ),
+                  )
+                }
               >
                 Claude
               </button>{' '}
-              <button aria-label={`Codex dans ${p.name}`} onClick={() => startAgent(p, 'codex', 'Codex')}>
+              <button
+                aria-label={`Codex dans ${p.name}`}
+                onClick={() =>
+                  run(
+                    startAgent(p.path, `Codex · ${p.name}`, { agent: 'codex' }).then((id) =>
+                      terminalStore.openAttachedTab(p.path, `Codex · ${p.name}`, id),
+                    ),
+                  )
+                }
+              >
                 Codex
               </button>{' '}
               <button

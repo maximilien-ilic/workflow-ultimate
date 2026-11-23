@@ -1,5 +1,4 @@
 import { app, dialog, shell } from 'electron'
-import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { dataDir, openDatabase } from './modules/shell/db'
 import { buildDiagnosticsReport } from './modules/shell/diagnostics'
@@ -8,7 +7,8 @@ import { handle } from './modules/shell/ipc'
 import { installMainLogging } from './modules/shell/log'
 import { migrations } from './modules/shell/migrations'
 import { registerAgentHandlers } from './modules/agents/sessions'
-import { agentSocketPath, startAgentSocket } from './modules/agents/socket'
+import { profileSocketPath } from './modules/agents/profile-socket'
+import { startAgentSocket } from './modules/agents/socket'
 import { registerProjectHandlers } from './modules/projects/ipc'
 import { registerTerminalHandlers } from './modules/terminals/ipc'
 import { startPtyHost } from './modules/terminals/pty-host'
@@ -50,10 +50,12 @@ void app.whenReady().then(async () => {
   const terminals = registerTerminalHandlers(ptyHost)
 
   // Agents : les hooks appellent wu-notify avec le Node embarqué (ELECTRON_RUN_AS_NODE) ; il écrit sur le socket.
-  // Un socket par profil (userData) : une version de dev, l'appli installée et les tests e2e parallèles
-  // ne se disputent pas le même socket.
-  const profile = createHash('sha256').update(app.getPath('userData')).digest('hex').slice(0, 8)
-  const socketPath = (await agentSocketPath()).replace(/\.sock$/, `-${profile}.sock`)
+  // Toute erreur de socket (EACCES sur XDG_RUNTIME_DIR, chemin occupé…) est isolée : la fenêtre s'ouvre,
+  // les agents tournent, seul leur état ne se met plus à jour.
+  const socketPath = await profileSocketPath().catch((error: unknown) => {
+    console.error(`Chemin du socket des agents indisponible : ${String(error)}`)
+    return null
+  })
   const agents = registerAgentHandlers(db, terminals, {
     notify: {
       node: process.execPath,
@@ -61,18 +63,19 @@ void app.whenReady().then(async () => {
         ? join(process.resourcesPath, 'wu-notify')
         : join(__dirname, '../../resources/wu-notify'),
     },
-    socketPath,
+    socketPath: socketPath ?? '',
     bins: {
       'claude-code': process.env['WU_CLAUDE_BIN'] || 'claude',
       codex: process.env['WU_CODEX_BIN'] || 'codex',
     },
   })
-  // Sans socket, les agents tournent quand même : seul leur état ne se met plus à jour.
-  const socket = await startAgentSocket({
-    path: socketPath,
-    sessionAgent: agents.sessionAgent,
-    onEvent: agents.onSocketEvent,
-  }).catch((error: unknown) => console.error(`Socket des agents indisponible : ${String(error)}`))
+  const socket = socketPath
+    ? await startAgentSocket({
+        path: socketPath,
+        sessionAgent: agents.sessionAgent,
+        onEvent: agents.onSocketEvent,
+      }).catch((error: unknown) => console.error(`Socket des agents indisponible : ${String(error)}`))
+    : undefined
 
   app.on('will-quit', () => {
     void socket?.close()

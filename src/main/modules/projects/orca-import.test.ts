@@ -175,6 +175,20 @@ describe('readSnapshot', () => {
     }
   }
 
+  it('recommence si le WAL disparaît entre sa détection et sa copie (checkpoint d’Orca)', () => {
+    const file = makeProfile('p', { repos, worktreeMeta: {}, settings: {} })
+    writeFileSync(`${file}-wal`, '')
+    let first = true
+    const walVanishes = (from: string, to: string) => {
+      if (first && from.endsWith('-wal')) {
+        first = false
+        rmSync(from) // Orca termine un checkpoint juste à ce moment
+      }
+      copyFileSync(from, to)
+    }
+    expect(readSnapshot(file, walVanishes).has('repos')).toBe(true)
+  })
+
   it('recommence la copie si la base change pendant la lecture', () => {
     const file = makeProfile('p', { repos, worktreeMeta: {}, settings: {} })
     writeFileSync(`${file}-wal`, '')

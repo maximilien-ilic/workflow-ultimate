@@ -21,6 +21,18 @@ const ack = (id: string, chars: number) => void window.wu.invoke('terminal:ack',
 // Lecture seule du texte affiché, par id de volet (le rendu WebGL ne laisse aucun texte dans le DOM).
 // Sert aux tests e2e et au débogage ; ne donne accès à rien que le renderer n'ait déjà.
 const mounted = new Map<string, Terminal>()
+
+// Dernières lignes non vides affichées par un terminal (aperçu de la vue d'ensemble des agents).
+export function lastLines(id: string, count: number): string[] {
+  const buffer = mounted.get(id)?.buffer.active
+  if (!buffer) return []
+  const lines: string[] = []
+  for (let i = buffer.length - 1; i >= 0 && lines.length < count; i--) {
+    const line = buffer.getLine(i)?.translateToString(true) ?? ''
+    if (line.trim()) lines.unshift(line)
+  }
+  return lines
+}
 ;(window as unknown as { __wuTerminalText: (id: string) => string }).__wuTerminalText = (id) => {
   const buffer = mounted.get(id)?.buffer.active
   if (!buffer) return ''
@@ -91,7 +103,7 @@ export function TerminalView({ id, cwd, active, onFocus }: Props) {
         return false
       }
       // Raccourcis de la zone de terminaux (onglets, splits) : laissés à la fenêtre.
-      if (ctrlShift && ['KeyD', 'KeyE', 'KeyT', 'KeyW'].includes(e.code)) return false
+      if (ctrlShift && ['KeyD', 'KeyE', 'KeyT', 'KeyW', 'KeyA', 'KeyJ'].includes(e.code)) return false
       if (e.altKey && !e.ctrlKey && /^Digit[1-9]$/.test(e.code)) return false
       return true
     })
@@ -102,10 +114,16 @@ export function TerminalView({ id, cwd, active, onFocus }: Props) {
     let cursor = 0
     let ready = isNew
     let queue: { data: string; offset: number }[] = []
-    const show = (data: string, offset: number) => {
+    // Écrit la partie inédite, puis acquitte le morceau entier une fois traité par xterm (contrôle de flux).
+    const show = (data: string, offset: number, ackChars: number) => {
       const fresh = unseen(cursor, data, offset)
       cursor = Math.max(cursor, offset)
-      if (fresh) term.write(fresh)
+      term.write(fresh, () => ackChars && ack(id, ackChars))
+    }
+    const flush = () => {
+      for (const e of queue) show(e.data, e.offset, e.data.length)
+      queue = []
+      ready = true
     }
 
     const unsubscribe = window.wu.onTerminalEvent((event) => {
@@ -115,9 +133,13 @@ export function TerminalView({ id, cwd, active, onFocus }: Props) {
       }
       if (event.id !== id) return
       if (event.type === 'data') {
-        if (ready) show(event.data, event.offset)
-        else queue.push(event)
-        term.write('', () => ack(id, event.data.length)) // acquitté quand xterm a traité ce qui précède
+        if (ready) show(event.data, event.offset, event.data.length)
+        else {
+          // Non acquittée, la file est déjà bornée par le contrôle de flux du main (pause du PTY) ;
+          // cette borne-ci n'est qu'une sécurité.
+          queue.push(event)
+          if (queue.length > 2000) queue.shift()
+        }
       } else if (event.type === 'exit')
         term.write(`\r\n\x1b[2m[processus terminé, code ${event.exitCode}]\x1b[0m\r\n`)
       else term.write(`\r\n\x1b[31m[${event.message}]\x1b[0m\r\n`)
@@ -136,12 +158,16 @@ export function TerminalView({ id, cwd, active, onFocus }: Props) {
       terminalStore.markStarted(id)
       window.wu.invoke('terminal:create', { id, cwd, cols: term.cols, rows: term.rows }).catch(fail)
     } else
-      void window.wu.invoke('terminal:attach', { id }).then((replay) => {
-        show(replay.data, replay.offset)
-        for (const e of queue) show(e.data, e.offset)
-        queue = []
-        ready = true
-      }, fail)
+      void window.wu.invoke('terminal:attach', { id }).then(
+        (replay) => {
+          show(replay.data, replay.offset, 0) // le rejeu n'a jamais été compté comme non acquitté
+          flush()
+        },
+        (e: unknown) => {
+          fail(e)
+          flush() // sans rejeu : on affiche quand même ce qui arrive, sans le retenir indéfiniment
+        },
+      )
 
     return () => {
       observer.disconnect()
