@@ -53,6 +53,50 @@ test('un terminal tourne dans le pty-host et survit au rechargement du renderer'
   await app.close()
 })
 
+test('un shell survit au plantage forcé du renderer et sa sortie est réaffichée', async () => {
+  const app = await launch()
+  const page = await app.firstWindow()
+  const id = crypto.randomUUID()
+  await page.evaluate(({ id, cwd }) => window.wu.invoke('terminal:create', { id, cwd, cols: 80, rows: 24 }), {
+    id,
+    cwd: dir,
+  })
+  // Le shell attend une saisie : seul le MÊME shell, encore vivant après le plantage, pourra y répondre.
+  // Les marqueurs attendus (pret-7, repris-42) n'apparaissent pas dans ce qui est tapé (écho du TTY).
+  await page.evaluate(
+    (id) =>
+      window.wu.invoke('terminal:write', { id, data: 'echo pret-$((3+4)); read x; echo repris-$((x*2))\n' }),
+    id,
+  )
+  await expect
+    .poll(() => page.evaluate((id) => window.wu.invoke('terminal:attach', { id }), id))
+    .toContain('pret-7')
+
+  // Plantage puis rechargement pilotés depuis le main : la page Playwright plantée n'est plus utilisable,
+  // on interroge donc directement le nouveau renderer.
+  await app.evaluate(({ BrowserWindow }) => {
+    const contents = BrowserWindow.getAllWindows()[0]!.webContents
+    return new Promise((resolve) => {
+      contents.once('render-process-gone', () => {
+        contents.once('did-finish-load', resolve)
+        contents.reload()
+      })
+      contents.forcefullyCrashRenderer()
+    })
+  })
+  const inRenderer = (code: string) =>
+    app.evaluate(
+      ({ BrowserWindow }, code) =>
+        BrowserWindow.getAllWindows()[0]!.webContents.executeJavaScript(code) as Promise<string>,
+      code,
+    )
+  const attach = `window.wu.invoke('terminal:attach', { id: ${JSON.stringify(id)} })`
+  expect(await inRenderer(attach)).not.toContain('repris-42')
+  await inRenderer(`window.wu.invoke('terminal:write', { id: ${JSON.stringify(id)}, data: '21\\n' })`)
+  await expect.poll(() => inRenderer(attach), { timeout: 10_000 }).toContain('repris-42')
+  await app.close()
+})
+
 test('un terminal inconnu ou un dossier invalide est refusé clairement', async () => {
   const app = await launch()
   const page = await app.firstWindow()
