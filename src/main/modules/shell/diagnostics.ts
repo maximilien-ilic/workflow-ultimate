@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { homedir } from 'node:os'
 import { sep } from 'node:path'
 import { app } from 'electron'
-import { agentSocketPath } from '../agents/socket'
+import { profileSocketPath } from '../agents/profile-socket'
 import { globalShortcutStatus } from './global-shortcuts'
 import { logDirectory } from './log'
 import { appDirectory } from './paths'
@@ -41,7 +41,7 @@ function displayPath(path: string): string {
 
 export async function buildDiagnosticsReport(): Promise<string> {
   const [socket, ...versions] = await Promise.all([
-    agentSocketPath().catch(() => 'indisponible'),
+    profileSocketPath().catch(() => 'indisponible'),
     ...Object.entries(cliVersions).map(
       async ([command, pattern]) => `${command} : ${await cliVersion(command, pattern)}`,
     ),
