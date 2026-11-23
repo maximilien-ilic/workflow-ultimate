@@ -7,12 +7,22 @@ import { terminalStore, type Tab } from './terminal-store'
 import { TerminalView } from './TerminalView'
 import './terminals.css'
 
-function Panes({ tab, tree }: { tab: Tab; tree: PaneTree }) {
+function Panes({
+  tab,
+  tree,
+  visible,
+  focusRequest,
+}: {
+  tab: Tab
+  tree: PaneTree
+  visible: boolean
+  focusRequest: number
+}) {
   if (tree.type === 'split')
     return (
       <div className="terminal-split" data-dir={tree.dir}>
-        <Panes tab={tab} tree={tree.a} />
-        <Panes tab={tab} tree={tree.b} />
+        <Panes tab={tab} tree={tree.a} visible={visible} focusRequest={focusRequest} />
+        <Panes tab={tab} tree={tree.b} visible={visible} focusRequest={focusRequest} />
       </div>
     )
   return (
@@ -20,7 +30,8 @@ function Panes({ tab, tree }: { tab: Tab; tree: PaneTree }) {
       key={tree.id}
       id={tree.id}
       cwd={tab.cwd}
-      active={tab.activePane === tree.id}
+      active={visible && tab.activePane === tree.id}
+      focusRequest={focusRequest}
       onFocus={() => terminalStore.focusPane(tab.id, tree.id)}
     />
   )
@@ -41,7 +52,7 @@ function tabTitle(tab: Tab) {
 }
 
 export function TerminalArea() {
-  const { tabs, activeTab } = useSyncExternalStore(terminalStore.subscribe, terminalStore.get)
+  const { tabs, activeTab, focusRequest } = useSyncExternalStore(terminalStore.subscribe, terminalStore.get)
   useSyncExternalStore(agentStore.subscribe, agentStore.version) // re-rendu quand un agent change d'état
 
   useEffect(() => {
@@ -90,7 +101,7 @@ export function TerminalArea() {
           {agentStore.get(tab.activePane) && (
             <AgentHeader terminalId={tab.activePane} info={agentStore.get(tab.activePane)!} cwd={tab.cwd} />
           )}
-          <Panes tab={tab} tree={tab.tree} />
+          <Panes tab={tab} tree={tab.tree} visible={tab.id === activeTab} focusRequest={focusRequest} />
         </div>
       ))}
     </section>
