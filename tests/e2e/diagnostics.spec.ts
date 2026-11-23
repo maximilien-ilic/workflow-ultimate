@@ -18,7 +18,7 @@ test('opens Diagnostic from the palette and copies the displayed report', async 
 
   try {
     const page = await app.firstWindow()
-    await page.getByRole('button', { name: 'Commandes (Ctrl+K)' }).click()
+    await page.getByRole('button', { name: 'Commandes (Ctrl+Shift+P)' }).click()
     const search = page.getByRole('combobox', { name: 'Rechercher une commande' })
     await search.fill('diag')
     await search.press('Enter')

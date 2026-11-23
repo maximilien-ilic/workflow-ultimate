@@ -37,9 +37,9 @@ test('restores resized and hidden panels after restarting Electron', async () =>
     await expect(handle).toHaveAttribute('aria-valuenow', String(savedWidth))
     await page.mouse.up()
 
-    await page.keyboard.press('Control+b')
+    await page.keyboard.press('Control+Shift+b')
     await expect(left).toBeHidden()
-    await page.keyboard.press('Control+Alt+b')
+    await page.keyboard.press('Control+Alt+Shift+b')
     await expect(right).toBeHidden()
     await expect
       .poll(async () =>
@@ -58,7 +58,7 @@ test('restores resized and hidden panels after restarting Electron', async () =>
       'false',
     )
     await expect(page.getByRole('button', { name: 'Contexte' })).toHaveAttribute('aria-pressed', 'false')
-    await page.keyboard.press('Control+b')
+    await page.keyboard.press('Control+Shift+b')
     await expect(page.getByRole('separator', { name: 'Barre latérale' })).toHaveAttribute(
       'aria-valuenow',
       String(savedWidth),
