@@ -61,14 +61,16 @@ test('un shell survit au plantage forcé du renderer et sa sortie est réaffich�
     id,
     cwd: dir,
   })
-  // Une commande longue : elle doit continuer pendant et après le plantage.
+  // Le shell attend une saisie : seul le MÊME shell, encore vivant après le plantage, pourra y répondre.
+  // Les marqueurs attendus (pret-7, repris-42) n'apparaissent pas dans ce qui est tapé (écho du TTY).
   await page.evaluate(
-    (id) => window.wu.invoke('terminal:write', { id, data: 'echo avant; sleep 2; echo apres-crash\n' }),
+    (id) =>
+      window.wu.invoke('terminal:write', { id, data: 'echo pret-$((3+4)); read x; echo repris-$((x*2))\n' }),
     id,
   )
   await expect
     .poll(() => page.evaluate((id) => window.wu.invoke('terminal:attach', { id }), id))
-    .toContain('avant')
+    .toContain('pret-7')
 
   // Plantage puis rechargement pilotés depuis le main : la page Playwright plantée n'est plus utilisable,
   // on interroge donc directement le nouveau renderer.
@@ -82,15 +84,16 @@ test('un shell survit au plantage forcé du renderer et sa sortie est réaffich�
       contents.forcefullyCrashRenderer()
     })
   })
-  const attachAfterCrash = () =>
+  const inRenderer = (code: string) =>
     app.evaluate(
-      ({ BrowserWindow }, id) =>
-        BrowserWindow.getAllWindows()[0]!.webContents.executeJavaScript(
-          `window.wu.invoke('terminal:attach', { id: ${JSON.stringify(id)} })`,
-        ) as Promise<string>,
-      id,
+      ({ BrowserWindow }, code) =>
+        BrowserWindow.getAllWindows()[0]!.webContents.executeJavaScript(code) as Promise<string>,
+      code,
     )
-  await expect.poll(attachAfterCrash, { timeout: 10_000 }).toContain('apres-crash')
+  const attach = `window.wu.invoke('terminal:attach', { id: ${JSON.stringify(id)} })`
+  expect(await inRenderer(attach)).not.toContain('repris-42')
+  await inRenderer(`window.wu.invoke('terminal:write', { id: ${JSON.stringify(id)}, data: '21\\n' })`)
+  await expect.poll(() => inRenderer(attach), { timeout: 10_000 }).toContain('repris-42')
   await app.close()
 })
 
