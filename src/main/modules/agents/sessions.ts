@@ -105,6 +105,8 @@ export function registerAgentHandlers(
   handle('agents:resume', ({ sessionId, terminalId, cols, rows }, event) => {
     const saved = row(sessionId)
     if (!saved) throw new Error(`Session ${sessionId} inconnue`)
+    // Vérifier avant toute écriture : un refus ne doit pas laisser la base dans l'état « starting ».
+    if (live.has(sessionId)) throw new Error(`Session ${sessionId} déjà ouverte`)
     db.prepare("UPDATE agent_sessions SET state = 'starting', updated_at = ? WHERE id = ?").run(
       Date.now(),
       sessionId,

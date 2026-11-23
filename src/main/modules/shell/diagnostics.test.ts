@@ -6,7 +6,7 @@ import { ipcRequestSchemas } from '../../../shared/ipc'
 import { buildDiagnosticsReport } from './diagnostics'
 
 vi.mock('electron', () => ({
-  app: { getVersion: () => '0.1.2' },
+  app: { getVersion: () => '0.1.2', getPath: () => '/profil/de/test' },
 }))
 
 vi.mock('./global-shortcuts', () => ({
@@ -45,7 +45,8 @@ describe('Diagnostic', () => {
     expect(report).toContain('Configuration : ~/config/workflow-ultimate')
     expect(report).toContain('Données : ~/data/workflow-ultimate')
     expect(report).toContain('Journaux : ~/state/workflow-ultimate/logs')
-    expect(report).toContain('Socket agents : ~/state/workflow-ultimate/agent.sock')
+    // Même chemin que celui ouvert au démarrage : un socket par profil (empreinte de userData).
+    expect(report).toMatch(/Socket agents : ~\/state\/workflow-ultimate\/agent-[0-9a-f]{8}\.sock/)
     expect(report).toContain('Portail indisponible.')
     expect(report).toContain('claude : 2.1.329')
     expect(report).toContain('codex : 0.168.0')
