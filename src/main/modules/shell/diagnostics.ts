@@ -40,8 +40,9 @@ function displayPath(path: string): string {
 }
 
 export async function buildDiagnosticsReport(): Promise<string> {
-  const [socket, ...versions] = await Promise.all([
+  const [socket, shortcut, ...versions] = await Promise.all([
     profileSocketPath().catch(() => 'indisponible'),
+    globalShortcutStatus(),
     ...Object.entries(cliVersions).map(
       async ([command, pattern]) => `${command} : ${await cliVersion(command, pattern)}`,
     ),
@@ -58,6 +59,6 @@ export async function buildDiagnosticsReport(): Promise<string> {
     '',
     ...versions,
     '',
-    `Raccourcis globaux : ${globalShortcutStatus().message}`,
+    `Raccourcis globaux : ${shortcut.message}`,
   ].join('\n')
 }

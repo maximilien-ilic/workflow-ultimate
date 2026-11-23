@@ -95,10 +95,10 @@ Thème sombre par défaut, thème clair complet ; option « suivre le thème KDE
 
 | Action | Raccourci |
 |---|---|
-| Afficher/masquer Workflow Ultimate | Meta+W |
+| Afficher/masquer Workflow Ultimate | Meta+Shift+W |
 | Aller au prochain agent qui attend une réponse | Meta+Shift+J |
 | Lancement rapide : petite fenêtre « prompt → agent » dans le projet actif | Meta+Shift+N |
-| Vue d'ensemble des agents | Meta+Shift+A |
+| Vue d'ensemble des agents | Meta+Alt+A |
 
 ## 6. Accessibilité
 
