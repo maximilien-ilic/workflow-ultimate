@@ -1,0 +1,39 @@
+#!/bin/sh
+
+scenario=${1:-success}
+agent=${2:-claude-code}
+case "$scenario" in
+  success|error|question) ;;
+  *) printf '%s\n' 'Scénario attendu : success, error ou question' >&2; exit 2 ;;
+esac
+case "$agent" in
+  claude-code|codex) ;;
+  *) printf '%s\n' 'Agent attendu : claude-code ou codex' >&2; exit 2 ;;
+esac
+
+root=$(CDPATH= cd "$(dirname "$0")/../.." && pwd) || exit 1
+notify() {
+  "$root/resources/wu-notify" "$agent" "$1"
+}
+
+printf '%s\n' "$agent démarre" 'Travail en cours'
+notify prompt-submitted
+case "$scenario" in
+  error)
+    printf '%s\n' 'Erreur simulée' >&2
+    notify error
+    exit 1
+    ;;
+  question)
+    printf '%s\n' 'Continuer ?'
+    notify needs-input
+    if ! IFS= read -r answer; then
+      notify error
+      exit 1
+    fi
+    printf '%s\n' 'Réponse reçue'
+    notify prompt-submitted
+    ;;
+esac
+printf '%s\n' 'Terminé'
+notify turn-finished

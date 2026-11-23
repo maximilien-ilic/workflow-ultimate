@@ -4,6 +4,7 @@ import { maxPanelWidth, minPanelWidth } from '../../../shared/layout-defaults'
 import type { Settings } from '../../../shared/settings'
 import { CommandPalette } from '../palette/CommandPalette'
 import { registerCommand } from '../palette/commands'
+import { Diagnostics } from './Diagnostics'
 import { useSettings } from './use-settings'
 import './layout.css'
 
@@ -190,6 +191,7 @@ export function ShellLayout({
         />
       </div>
       {error && <p role="alert">{error}</p>}
+      <Diagnostics />
       <div className="shell-panes">
         {layout.left.visible && panel('left', leftPanel)}
         <div className="shell-center">{children}</div>

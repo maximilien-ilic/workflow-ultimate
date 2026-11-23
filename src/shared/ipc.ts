@@ -12,6 +12,7 @@ export const ipcRequestSchemas = {
   'projects:remove': z.object({ id: z.uuid() }).strict(),
   // Ouvre le sélecteur de dossier du système : `repo` ajoute un dépôt, `scan` ajoute tous ceux trouvés dedans.
   'projects:pick': z.object({ mode: z.enum(['repo', 'scan']) }).strict(),
+  'diagnostics:report': z.object({}).strict(),
   'settings:get': z.object({}).strict(),
   'settings:set': settingsSchema,
   'worktrees:list': z.object({ projectId: z.uuid() }).strict(),
@@ -40,6 +41,7 @@ interface IpcResponses {
   'worktrees:create': string
   'worktrees:createFromIssue': string
   'worktrees:remove': { removed: boolean; dirtyFiles: number }
+  'diagnostics:report': string
   'settings:get': Settings
   'settings:set': null
 }
