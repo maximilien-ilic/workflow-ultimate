@@ -18,13 +18,17 @@ export async function repoInfo(path: string): Promise<RepoInfo> {
   } catch {
     throw new Error(`Dossier introuvable : ${path}`)
   }
-  let gitDir: string, toplevel: string
+  let gitDir: string, ownGitDir: string, toplevel: string
   try {
     gitDir = await git(path, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    ownGitDir = await git(path, 'rev-parse', '--path-format=absolute', '--git-dir')
     toplevel = await git(path, 'rev-parse', '--show-toplevel')
   } catch {
     throw new Error(`${path} n'est pas un dépôt git (ou c'est un dépôt nu, sans dossier de travail)`)
   }
+  // Dans le worktree principal, --show-toplevel est toujours juste (même avec un --separate-git-dir nommé .git).
+  if (ownGitDir === gitDir) return { gitDir, root: toplevel }
+  // Depuis un worktree lié : le principal est le parent d'un dossier `.git` classique.
   return { gitDir, root: basename(gitDir) === '.git' ? dirname(gitDir) : toplevel }
 }
 

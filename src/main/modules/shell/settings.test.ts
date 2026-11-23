@@ -29,6 +29,7 @@ describe('settings', () => {
     const right = { width: 320, visible: false }
     writeFileSync(file, JSON.stringify({ layout: { left: { width: 10000, visible: false }, right } }))
     expect(readSettings(file)).toEqual({
+      ...defaultSettings,
       layout: { left: { width: defaultSettings.layout.left.width, visible: false }, right },
     })
   })
@@ -41,9 +42,27 @@ describe('settings', () => {
 
   it('remplace le fichier et ne laisse pas de fichier temporaire', () => {
     writeSettings(file, defaultSettings)
-    const next = { layout: { ...defaultSettings.layout, left: { width: 325, visible: false } } }
+    const next = {
+      ...defaultSettings,
+      layout: { ...defaultSettings.layout, left: { width: 325, visible: false } },
+    }
     writeSettings(file, next)
     expect(readSettings(file)).toEqual(next)
     expect(readdirSync(directory)).toEqual(['settings.json'])
+  })
+})
+
+describe('raccourcis persistés', () => {
+  it('accepte un ancien fichier de disposition sans raccourcis', () => {
+    expect(settingsSchema.parse({ layout: defaultSettings.layout }).keybindings).toEqual({})
+  })
+
+  it('refuse les collisions avec la palette et les raccourcis par défaut', () => {
+    for (const keybinding of ['Ctrl+K', 'Ctrl+Alt+B', 'ctrl+j']) {
+      const payload = { ...defaultSettings, keybindings: { 'shell.toggle-left': keybinding } }
+      expect(settingsSchema.safeParse(payload).success).toBe(false)
+    }
+    const keybindings = { 'shell.toggle-left': 'Ctrl+J', 'shell.toggle-right': 'Ctrl+B' }
+    expect(settingsSchema.parse({ ...defaultSettings, keybindings }).keybindings).toEqual(keybindings)
   })
 })
