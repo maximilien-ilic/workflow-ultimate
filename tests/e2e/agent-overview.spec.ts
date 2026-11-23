@@ -32,6 +32,8 @@ test("vue d'ensemble : l'agent en attente en tête, et Ctrl+Shift+J y ramène", 
 
   await page.getByRole('button', { name: 'Claude dans alpha' }).click()
   await expect(page.getByRole('tab', { name: /Claude · alpha/ })).toContainText('attend une réponse')
+  await page.getByRole('treeitem', { name: 'beta', exact: true }).press('ArrowRight')
+  await page.keyboard.press('Enter')
   await page.getByRole('button', { name: 'Claude dans beta' }).click()
   const beta = page.getByRole('tab', { name: /Claude · beta/ })
   await expect(beta).toContainText('attend une réponse')

@@ -4,6 +4,7 @@ import type { PickResult } from '../../../shared/ipc'
 import { handle } from '../shell/ipc'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { gitStatus } from './git-status'
 import { addProject, getProject, listProjects, removeProject, scanForRepos } from './registry'
 import {
   branchExists,
@@ -40,6 +41,12 @@ export function registerProjectHandlers(db: DatabaseSync): void {
   const repoOf = (projectId: string) => getProject(db, projectId).path
 
   handle('worktrees:list', ({ projectId }) => listWorktrees(repoOf(projectId)))
+  handle('worktrees:status', async ({ projectId }) => {
+    const worktrees = await listWorktrees(repoOf(projectId))
+    return Promise.all(
+      worktrees.map(async ({ path }) => ({ path, status: await gitStatus(path).catch(() => null) })),
+    )
+  })
   handle('worktrees:create', ({ projectId, branch, create }) =>
     createWorktree(repoOf(projectId), defaultWorkspaces(), { branch, create }),
   )
