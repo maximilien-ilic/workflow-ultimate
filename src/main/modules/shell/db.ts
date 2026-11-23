@@ -31,6 +31,7 @@ const userVersion = (db: DatabaseSync) =>
 
 // Une base migrée par une version plus récente de l'appli ne doit pas être réutilisée à l'aveugle.
 function assertNotNewer(current: number, migrations: Migration[]): void {
+  if (current < 0) throw new Error(`Base en version ${current} : valeur impossible, base non créée par l'appli`)
   if (current > migrations.length)
     throw new Error(`Base en version ${current}, plus récente que l'appli (${migrations.length})`)
 }
