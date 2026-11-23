@@ -1,8 +1,9 @@
 #!/bin/sh
 
-# Lancé à la place de `claude` par l'appli (WU_CLAUDE_BIN), il reçoit les options de Claude
-# (--session-id, --settings…) : le scénario vient alors de FAKE_AGENT_SCENARIO.
+# Lancé à la place du vrai CLI, le scénario vient de FAKE_AGENT_SCENARIO.
 case "${1:-}" in
+  -c) scenario=${FAKE_AGENT_SCENARIO:-success}; agent=codex
+      if [ "${3:-}" = resume ]; then printf 'Reprise du thread %s\n' "${4:-}"; fi ;;
   -*) scenario=${FAKE_AGENT_SCENARIO:-success}; agent=claude-code ;;
   *) scenario=${1:-success}; agent=${2:-claude-code} ;;
 esac
@@ -17,7 +18,10 @@ esac
 
 root=$(CDPATH= cd "$(dirname "$0")/../.." && pwd) || exit 1
 notify() {
-  "$root/resources/wu-notify" "$agent" "$1"
+  if [ "$agent" = codex ] && [ "$1" = turn-finished ]; then
+    set -- "$1" '{"type":"agent-turn-complete","thread-id":"019a0000-0000-7000-8000-000000000001"}'
+  fi
+  "$root/resources/wu-notify" "$agent" "$@"
 }
 
 printf '%s\n' "$agent démarre" 'Travail en cours'

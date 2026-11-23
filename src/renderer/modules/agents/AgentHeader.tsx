@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { terminalStore } from '../terminals/terminal-store'
 import { stateLabel, startAgent, type AgentInfo } from './agent-store'
 
-const agentName = { 'claude-code': 'Claude Code' } as const
+const agentName = { 'claude-code': 'Claude Code', codex: 'Codex' } as const
 
 function elapsed(since: number, now: number): string {
   const s = Math.max(0, Math.floor((now - since) / 1000))
@@ -30,7 +30,7 @@ export function AgentHeader({ terminalId, info, cwd }: { terminalId: string; inf
       <span title={cwd}>{cwd.split('/').at(-1)}</span>
       <span>{elapsed(info.startedAt, now)}</span>
       {!info.exited && (
-        // Échap interrompt le tour en cours dans Claude Code, sans quitter la session.
+        // Échap interrompt le tour en cours (Claude Code et Codex), sans quitter la session.
         <button onClick={() => void window.wu.invoke('terminal:write', { id: terminalId, data: '\x1b' })}>
           Interrompre
         </button>
@@ -38,7 +38,7 @@ export function AgentHeader({ terminalId, info, cwd }: { terminalId: string; inf
       {info.exited && (
         <button
           onClick={() =>
-            void startAgent(cwd, info.title, info.sessionId).then(
+            void startAgent(cwd, info.title, { agent: info.agent, resumeOf: info.sessionId }).then(
               (id) => terminalStore.openAttachedTab(cwd, `${info.title} (reprise)`, id),
               (e: unknown) => setError(`Reprise impossible : ${String(e)}`),
             )

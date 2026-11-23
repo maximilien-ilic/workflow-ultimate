@@ -64,7 +64,10 @@ void app.whenReady().then(async () => {
         : join(__dirname, '../../resources/wu-notify'),
     },
     socketPath: socketPath ?? '',
-    claudeBin: process.env['WU_CLAUDE_BIN'] || 'claude',
+    bins: {
+      'claude-code': process.env['WU_CLAUDE_BIN'] || 'claude',
+      codex: process.env['WU_CODEX_BIN'] || 'codex',
+    },
   })
   const socket = socketPath
     ? await startAgentSocket({

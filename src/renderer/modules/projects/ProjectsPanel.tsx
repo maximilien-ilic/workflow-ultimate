@@ -71,6 +71,18 @@ export function ProjectsPanel() {
                 Claude
               </button>{' '}
               <button
+                aria-label={`Codex dans ${p.name}`}
+                onClick={() =>
+                  run(
+                    startAgent(p.path, `Codex · ${p.name}`, { agent: 'codex' }).then((id) =>
+                      terminalStore.openAttachedTab(p.path, `Codex · ${p.name}`, id),
+                    ),
+                  )
+                }
+              >
+                Codex
+              </button>{' '}
+              <button
                 aria-label={`Terminal dans ${p.name}`}
                 onClick={() => terminalStore.openTab(p.path, p.name)}
               >

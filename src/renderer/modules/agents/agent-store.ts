@@ -1,8 +1,8 @@
-import type { AgentState } from '../../../shared/ipc'
+import type { AgentSession, AgentState } from '../../../shared/ipc'
 
 export type AgentInfo = {
   sessionId: string
-  agent: 'claude-code'
+  agent: AgentSession['agent']
   title: string
   startedAt: number
   state: AgentState
@@ -97,12 +97,17 @@ export const stateLabel: Record<AgentState, { icon: string; text: string }> = {
 }
 
 // Lance un agent dans un nouveau terminal ; renvoie l'id du terminal à ouvrir dans un onglet.
-export async function startAgent(cwd: string, title: string, resumeOf?: string): Promise<string> {
+export async function startAgent(
+  cwd: string,
+  title: string,
+  opts: { agent?: AgentSession['agent']; resumeOf?: string } = {},
+): Promise<string> {
+  const { agent = 'claude-code', resumeOf } = opts
   const terminalId = crypto.randomUUID()
   const size = { cols: 120, rows: 30 }
   const session = resumeOf
     ? await window.wu.invoke('agents:resume', { sessionId: resumeOf, terminalId, ...size })
-    : await window.wu.invoke('agents:start', { terminalId, cwd, agent: 'claude-code', ...size })
+    : await window.wu.invoke('agents:start', { terminalId, cwd, agent, ...size })
   agentStore.started(terminalId, { sessionId: session.id, agent: session.agent, title }, session.state)
   return terminalId
 }

@@ -128,4 +128,46 @@ describe('agent events socket', () => {
       stderr: '',
     })
   })
+
+  it('extrait uniquement thread-id du JSON ajouté par Codex', async () => {
+    server = await startAgentSocket({
+      path,
+      sessionAgent: (id) => (id === sessionId ? 'codex' : undefined),
+      onEvent,
+      warn,
+    })
+    const externalId = '019a0000-0000-7000-8000-000000000001'
+    const payload = {
+      type: 'agent-turn-complete',
+      'thread-id': externalId,
+      'input-messages': ['secret-test'],
+    }
+    await exec(notify, ['codex', 'turn-finished', JSON.stringify(payload)], { env: hookEnv(), timeout: 2200 })
+    await vi.waitFor(() =>
+      expect(onEvent).toHaveBeenCalledExactlyOnceWith({
+        sessionId,
+        agent: 'codex',
+        event: { type: 'turn-finished' },
+        externalId,
+        ts: expect.any(Number),
+      }),
+    )
+
+    await exec(
+      notify,
+      ['codex', 'turn-finished', JSON.stringify({ ...payload, 'thread-id': 'not-a-uuid' })],
+      {
+        env: hookEnv(),
+        timeout: 2200,
+      },
+    )
+    await vi.waitFor(() =>
+      expect(onEvent).toHaveBeenNthCalledWith(2, {
+        sessionId,
+        agent: 'codex',
+        event: { type: 'turn-finished' },
+        ts: expect.any(Number),
+      }),
+    )
+  })
 })

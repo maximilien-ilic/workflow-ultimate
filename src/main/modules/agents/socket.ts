@@ -18,6 +18,7 @@ const envelope = z.strictObject({
   agent: agentKind,
   event,
   ts: z.number().int().nonnegative(),
+  externalId: z.uuid().optional(),
 })
 
 export type AgentKind = z.output<typeof agentKind>
