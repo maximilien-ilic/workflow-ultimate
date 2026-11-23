@@ -70,5 +70,15 @@ test('un terminal inconnu ou un dossier invalide est refusé clairement', async 
     ),
   )
   expect(relative).toContain('chemin absolu')
+  // Un dossier absolu inexistant : le lancement échoue dans le pty-host, et create le dit (pas de faux succès).
+  const missing = await page.evaluate(() =>
+    window.wu
+      .invoke('terminal:create', { id: crypto.randomUUID(), cwd: '/nexiste/pas', cols: 80, rows: 24 })
+      .then(
+        () => 'accepté',
+        (e: Error) => e.message,
+      ),
+  )
+  expect(missing).toContain('introuvable')
   await app.close()
 })

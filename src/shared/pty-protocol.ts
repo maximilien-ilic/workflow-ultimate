@@ -21,6 +21,8 @@ export type HostRequest =
   | { type: 'resume'; id: string }
 
 export type HostEvent =
+  // Confirmation de lancement : le main ne répond « créé » au renderer qu'après cet événement.
+  | { type: 'spawned'; id: string; pid: number }
   | { type: 'data'; id: string; data: string }
   | { type: 'exit'; id: string; exitCode: number; signal: number | null }
   | { type: 'replay'; id: string; data: string }
