@@ -23,7 +23,23 @@ function showMainWindow(): void {
   window.focus()
 }
 
-const actions = new Map<string, () => void>([['window.show', showMainWindow]])
+function toggleMainWindow(): void {
+  const window = BrowserWindow.getAllWindows()[0]
+  if (!window) return
+  if (window.isVisible() && window.isFocused()) window.hide()
+  else showMainWindow()
+}
+
+const actions = new Map<string, () => void>([
+  ['window.show', showMainWindow],
+  ['window.toggle', toggleMainWindow],
+])
+
+export function runMainAction(id: string): void {
+  const action = actions.get(id)
+  if (action) action()
+  else console.warn(`Action inconnue : ${id}`)
+}
 
 export function registerSingleInstance(): boolean {
   // Chromium peut réordonner les arguments transmis par second-instance.
@@ -36,9 +52,7 @@ export function registerSingleInstance(): boolean {
       return
     }
 
-    const action = actions.get(id)
-    if (action) action()
-    else console.warn(`Action inconnue : ${id}`)
+    runMainAction(id)
   })
   return true
 }
