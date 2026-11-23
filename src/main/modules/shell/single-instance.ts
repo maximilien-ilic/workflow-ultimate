@@ -26,7 +26,7 @@ function showMainWindow(): void {
 function toggleMainWindow(): void {
   const window = BrowserWindow.getAllWindows()[0]
   if (!window) return
-  if (window.isVisible() && window.isFocused()) window.hide()
+  if (window.isVisible() && !window.isMinimized()) window.hide()
   else showMainWindow()
 }
 
