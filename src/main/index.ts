@@ -62,7 +62,10 @@ void app.whenReady().then(async () => {
         : join(__dirname, '../../resources/wu-notify'),
     },
     socketPath,
-    claudeBin: process.env['WU_CLAUDE_BIN'] || 'claude',
+    bins: {
+      'claude-code': process.env['WU_CLAUDE_BIN'] || 'claude',
+      codex: process.env['WU_CODEX_BIN'] || 'codex',
+    },
   })
   // Sans socket, les agents tournent quand même : seul leur état ne se met plus à jour.
   const socket = await startAgentSocket({

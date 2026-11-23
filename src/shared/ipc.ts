@@ -26,12 +26,12 @@ export const ipcRequestSchemas = {
   'terminal:ack': z.object({ id: z.uuid(), chars: z.number().int().min(0).max(10_000_000) }).strict(),
   // Lien cliqué dans un terminal : ouvert dans le navigateur du système, http(s) seulement.
   'shell:openUrl': z.object({ url: z.url({ protocol: /^https?$/ }).max(4096) }).strict(),
-  // Lance Claude Code dans un nouveau terminal `terminalId` (le renderer s'y rattache ensuite).
+  // Lance l'agent dans un nouveau terminal `terminalId` (le renderer s'y rattache ensuite).
   'agents:start': z
     .object({
       terminalId: z.uuid(),
       cwd: absolutePath,
-      agent: z.literal('claude-code'),
+      agent: z.enum(['claude-code', 'codex']),
       prompt: z.string().max(20_000).optional(),
       cols: dimension,
       rows: dimension,
@@ -49,7 +49,7 @@ export type Project = { id: string; path: string; name: string; addedAt: number 
 export type AgentState = 'starting' | 'working' | 'waiting' | 'done' | 'error'
 export type AgentSession = {
   id: string
-  agent: 'claude-code'
+  agent: IpcRequest<'agents:start'>['agent']
   cwd: string
   state: AgentState
   terminalId: string | null // null : pas de terminal ouvert dans cette exécution de l'appli

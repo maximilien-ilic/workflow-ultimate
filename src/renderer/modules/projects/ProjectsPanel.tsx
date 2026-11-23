@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type DragEvent } from 'react'
-import type { PickResult, Project } from '../../../shared/ipc'
+import type { AgentSession, PickResult, Project } from '../../../shared/ipc'
 import { agentStore } from '../agents/agent-store'
 import { terminalStore } from '../terminals/terminal-store'
 
@@ -18,6 +18,17 @@ export function ProjectsPanel() {
     return refresh()
   }
   const run = (task: Promise<unknown>) => task.catch((e: unknown) => setMessages([String(e)]))
+  const startAgent = (project: Project, agent: AgentSession['agent'], label: string) => {
+    const terminalId = crypto.randomUUID()
+    run(
+      window.wu
+        .invoke('agents:start', { terminalId, cwd: project.path, agent, cols: 120, rows: 30 })
+        .then(() => {
+          agentStore.started(terminalId)
+          terminalStore.openAttachedTab(project.path, `${label} · ${project.name}`, terminalId)
+        }),
+    )
+  }
 
   const onDrop = (event: DragEvent) => {
     event.preventDefault()
@@ -60,25 +71,12 @@ export function ProjectsPanel() {
               <strong>{p.name}</strong> <small>{p.path}</small>{' '}
               <button
                 aria-label={`Claude dans ${p.name}`}
-                onClick={() => {
-                  const terminalId = crypto.randomUUID()
-                  run(
-                    window.wu
-                      .invoke('agents:start', {
-                        terminalId,
-                        cwd: p.path,
-                        agent: 'claude-code',
-                        cols: 120,
-                        rows: 30,
-                      })
-                      .then(() => {
-                        agentStore.started(terminalId)
-                        terminalStore.openAttachedTab(p.path, `Claude · ${p.name}`, terminalId)
-                      }),
-                  )
-                }}
+                onClick={() => startAgent(p, 'claude-code', 'Claude')}
               >
                 Claude
+              </button>{' '}
+              <button aria-label={`Codex dans ${p.name}`} onClick={() => startAgent(p, 'codex', 'Codex')}>
+                Codex
               </button>{' '}
               <button
                 aria-label={`Terminal dans ${p.name}`}

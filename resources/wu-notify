@@ -1,10 +1,21 @@
 #!/usr/bin/env node
 const { createConnection } = require('node:net')
 
-const [agent, type, rawCode] = process.argv.slice(2)
+const [agent, type, argument] = process.argv.slice(2)
 const sessionId = process.env.WU_SESSION_ID
 const path = process.env.WU_AGENT_SOCKET
 const hookEvents = ['prompt-submitted', 'needs-input', 'turn-finished', 'error']
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function codexThreadId(payload) {
+  try {
+    const notification = JSON.parse(payload)
+    const id = notification?.['thread-id']
+    if (notification?.type === 'agent-turn-complete' && typeof id === 'string' && uuid.test(id)) return id
+  } catch {
+    // Un payload absent ou illisible ne doit pas empêcher de signaler la fin du tour.
+  }
+}
 
 function notify() {
   if (!sessionId || sessionId.length > 64 || !path?.startsWith('/') || Buffer.byteLength(path) > 107) return
@@ -12,19 +23,20 @@ function notify() {
 
   const event = { type }
   if (type === 'pty-exit') {
-    const code = rawCode === 'null' ? null : Number(rawCode)
-    if (code !== null && (!rawCode || !Number.isSafeInteger(code))) return
+    const code = argument === 'null' ? null : Number(argument)
+    if (code !== null && (!argument || !Number.isSafeInteger(code))) return
     event.code = code
   } else if (!hookEvents.includes(type)) {
     return
   }
 
+  const externalId = agent === 'codex' && type === 'turn-finished' ? codexThreadId(argument) : undefined
   const client = createConnection(path)
   const timeout = setTimeout(() => client.destroy(), 1800)
   client.once('error', () => client.destroy())
   client.once('close', () => clearTimeout(timeout))
   client.once('connect', () => {
-    client.end(JSON.stringify({ sessionId, agent, event, ts: Date.now() }) + '\n', () => client.destroy())
+    client.end(JSON.stringify({ sessionId, agent, event, ts: Date.now(), externalId }) + '\n', () => client.destroy())
   })
 }
 
