@@ -62,6 +62,23 @@ describe('repoRoot', () => {
     await expect(repoRoot(repo)).resolves.toBe(repo)
   })
 
+  // Limite de git : avec un stockage séparé nommé .git, `git worktree list` déclare lui-même le parent du
+  // stockage comme worktree principal ; rien ne permet de retrouver le vrai checkout. On suit la vue de git,
+  // et l'identité par gitDir garantit qu'il n'y a jamais deux projets pour ce dépôt.
+  it('stockage séparé nommé .git : on suit la vue de git et le projet reste unique', async () => {
+    const repo = join(dir, 'checkout')
+    mkdirSync(repo)
+    mkdirSync(join(dir, 'stockage'))
+    git(repo, 'init', '-q', '-b', 'main', '--separate-git-dir', join(dir, 'stockage/.git'))
+    git(repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'init')
+    git(repo, 'worktree', 'add', '-q', join(dir, 'lie'), '-b', 'lie')
+    const fromMain = await addProject(db, repo)
+    const fromLinked = await addProject(db, join(dir, 'lie'))
+    expect(fromMain.path).toBe(repo) // depuis le checkout principal : toujours juste
+    expect(fromLinked.id).toBe(fromMain.id)
+    expect(listProjects(db)).toHaveLength(1)
+  })
+
   it('gère un chemin qui contient un retour à la ligne', async () => {
     const repo = makeRepo(join(dir, 'mon\nrepo'))
     await expect(repoRoot(repo)).resolves.toBe(repo)
