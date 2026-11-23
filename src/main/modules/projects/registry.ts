@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { access, readdir, stat } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { promisify } from 'node:util'
 import type { Project } from '../../../shared/ipc'
@@ -38,8 +38,12 @@ export async function repoInfo(path: string): Promise<RepoInfo> {
   }
   // Dans le worktree principal, --show-toplevel est toujours juste (même avec un --separate-git-dir nommé .git).
   if (ownGitDir === gitDir) return { gitDir, root: toplevel }
-  // Depuis un worktree lié : le principal est le parent d'un dossier `.git` classique.
-  return { gitDir, root: basename(gitDir) === '.git' ? dirname(gitDir) : toplevel }
+  // Depuis un worktree lié : git donne le worktree principal en premier. Avec un stockage séparé, il ne le
+  // connaît pas : il renvoie le stockage (ou son parent s'il s'appelle .git). shortcut: ce cas rare n'est pas
+  // détectable ; l'identité par gitDir évite tout doublon, et un ajout depuis le checkout principal est juste.
+  const list = await git(path, 'worktree', 'list', '--porcelain', '-z')
+  const first = list.split('\0')[0]?.replace(/^worktree /, '')
+  return { gitDir, root: first && first !== gitDir ? first : toplevel }
 }
 
 export const repoRoot = async (path: string) => (await repoInfo(path)).root

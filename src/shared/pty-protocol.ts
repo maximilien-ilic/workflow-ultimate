@@ -28,4 +28,6 @@ export type HostEvent =
   | { type: 'exit'; id: string; exitCode: number; signal: number | null }
   // Les derniers caractères (au plus la taille du tampon), jusqu'à `offset` inclus.
   | { type: 'replay'; id: string; data: string; offset: number }
-  | { type: 'error'; id: string; message: string }
+  | { type: 'error'; id: string; request: HostRequest['type']; message: string }
+  // Terminal fermé par kill et oublié par le pty-host : le main peut l'oublier aussi.
+  | { type: 'closed'; id: string }
