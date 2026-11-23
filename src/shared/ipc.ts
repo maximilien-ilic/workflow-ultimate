@@ -17,6 +17,7 @@ export const ipcRequestSchemas = {
   'settings:get': z.object({}).strict(),
   'settings:set': settingsSchema,
   'worktrees:list': z.object({ projectId: z.uuid() }).strict(),
+  'worktrees:status': z.object({ projectId: z.uuid() }).strict(),
   'worktrees:create': z
     .object({ projectId: z.uuid(), branch: z.string().min(1).max(200), create: z.boolean() })
     .strict(),
@@ -55,6 +56,15 @@ export type AppInfo = { name: string; version: string; electron: string; node: s
 export type Project = { id: string; path: string; name: string; addedAt: number }
 // Résultat d'un ajout par sélecteur : projets ajoutés et chemins refusés (avec la raison).
 export type Worktree = { path: string; branch: string | null; main: boolean }
+export type GitStatus = {
+  branch: string | null
+  shortSha: string | null
+  modified: number
+  staged: number
+  untracked: number
+  ahead: number | null
+  behind: number | null
+}
 export type AgentState = 'starting' | 'working' | 'waiting' | 'done' | 'error'
 export type AgentSession = {
   id: string
@@ -75,6 +85,7 @@ interface IpcResponses {
   'projects:remove': null
   'projects:pick': PickResult
   'worktrees:list': Worktree[]
+  'worktrees:status': { path: string; status: GitStatus | null }[]
   'worktrees:create': string
   'worktrees:createFromIssue': string
   'worktrees:remove': { removed: boolean; dirtyFiles: number }
