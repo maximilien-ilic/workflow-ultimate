@@ -45,6 +45,10 @@ test("un agent lancé depuis un projet remonte ses états jusqu'à l'onglet", as
   // En-tête de l'agent : état lisible, puis « Reprendre » une fois le processus terminé.
   const header = page.getByRole('region', { name: 'Agent Claude Code' })
   await expect(header.getByRole('status')).toHaveText(/terminé/)
+  // Après un rechargement, l'en-tête restauré est réconcilié avec le main : l'agent est fini, donc « Reprendre ».
+  await page.reload()
+  await expect(header.getByRole('button', { name: 'Reprendre' })).toBeVisible()
+  await expect(header.getByRole('button', { name: 'Interrompre' })).toHaveCount(0)
   await header.getByRole('button', { name: 'Reprendre' }).click()
   const resumed = page.getByRole('tab', { name: /\(reprise\)/ })
   await expect(resumed).toContainText('attend une réponse')

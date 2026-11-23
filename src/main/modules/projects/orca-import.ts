@@ -45,8 +45,15 @@ export function readSnapshot(file: string, copy: CopyFile = copyFileSync): Map<s
       rmSync(`${target}-wal`, { force: true })
       const before = fingerprint(file)
       copy(file, target)
-      if (existsSync(`${file}-wal`)) copy(`${file}-wal`, `${target}-wal`)
-      if (fingerprint(file) === before) break
+      let walVanished = false
+      try {
+        if (existsSync(`${file}-wal`)) copy(`${file}-wal`, `${target}-wal`)
+      } catch (error) {
+        // WAL supprimé entre sa détection et sa copie (checkpoint d'Orca) : instantané à refaire.
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        walVanished = true
+      }
+      if (!walVanished && fingerprint(file) === before) break
       if (attempt === 3)
         throw new Error("base Orca modifiée pendant la lecture (Orca est en train d'écrire), réessayer")
     }

@@ -39,12 +39,35 @@ window.wu.onAgentEvent(({ terminalId, state }) => {
   agents.set(terminalId, { ...info, state })
   changed()
 })
+// Fins de processus arrivées avant que l'agent soit connu (avant la réponse de agents:start) : appliquées
+// au moment de started(). Bornées : seuls les tout derniers terminaux comptent.
+const earlyExits = new Set<string>()
+
 window.wu.onTerminalEvent((event) => {
-  const info = event.type === 'exit' ? agents.get(event.id) : undefined
-  if (!info || event.type !== 'exit') return
+  if (event.type !== 'exit') return
+  const info = agents.get(event.id)
+  if (!info) {
+    earlyExits.add(event.id)
+    if (earlyExits.size > 100) earlyExits.delete(earlyExits.values().next().value!)
+    return
+  }
   agents.set(event.id, { ...info, exited: true })
   changed()
 })
+
+// Après un rechargement, les infos restaurées peuvent être périmées (l'agent a pu finir pendant le
+// rechargement) : le main fait foi. Une session sans ce terminal vivant est terminée.
+async function reconcile() {
+  if (agents.size === 0) return
+  const sessions = await window.wu.invoke('agents:list', {}).catch(() => [])
+  for (const [terminalId, info] of agents) {
+    const session = sessions.find((s) => s.id === info.sessionId)
+    if (!session) continue
+    agents.set(terminalId, { ...info, state: session.state, exited: session.terminalId !== terminalId })
+  }
+  changed()
+}
+void reconcile()
 
 export const agentStore = {
   subscribe(listener: () => void) {
@@ -58,7 +81,8 @@ export const agentStore = {
   started(terminalId: string, info: Omit<AgentInfo, 'startedAt' | 'state' | 'exited'>, state: AgentState) {
     // Un événement a pu arriver avant la réponse de agents:start : il est plus récent, on le garde.
     const current = agents.get(terminalId)
-    agents.set(terminalId, { ...info, startedAt: Date.now(), state: current?.state ?? state, exited: false })
+    const exited = earlyExits.delete(terminalId)
+    agents.set(terminalId, { ...info, startedAt: Date.now(), state: current?.state ?? state, exited })
     changed()
   },
 }

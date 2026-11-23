@@ -114,10 +114,16 @@ export function TerminalView({ id, cwd, active, onFocus }: Props) {
     let cursor = 0
     let ready = isNew
     let queue: { data: string; offset: number }[] = []
-    const show = (data: string, offset: number) => {
+    // Écrit la partie inédite, puis acquitte le morceau entier une fois traité par xterm (contrôle de flux).
+    const show = (data: string, offset: number, ackChars: number) => {
       const fresh = unseen(cursor, data, offset)
       cursor = Math.max(cursor, offset)
-      if (fresh) term.write(fresh)
+      term.write(fresh, () => ackChars && ack(id, ackChars))
+    }
+    const flush = () => {
+      for (const e of queue) show(e.data, e.offset, e.data.length)
+      queue = []
+      ready = true
     }
 
     const unsubscribe = window.wu.onTerminalEvent((event) => {
@@ -127,9 +133,13 @@ export function TerminalView({ id, cwd, active, onFocus }: Props) {
       }
       if (event.id !== id) return
       if (event.type === 'data') {
-        if (ready) show(event.data, event.offset)
-        else queue.push(event)
-        term.write('', () => ack(id, event.data.length)) // acquitté quand xterm a traité ce qui précède
+        if (ready) show(event.data, event.offset, event.data.length)
+        else {
+          // Non acquittée, la file est déjà bornée par le contrôle de flux du main (pause du PTY) ;
+          // cette borne-ci n'est qu'une sécurité.
+          queue.push(event)
+          if (queue.length > 2000) queue.shift()
+        }
       } else if (event.type === 'exit')
         term.write(`\r\n\x1b[2m[processus terminé, code ${event.exitCode}]\x1b[0m\r\n`)
       else term.write(`\r\n\x1b[31m[${event.message}]\x1b[0m\r\n`)
@@ -148,12 +158,16 @@ export function TerminalView({ id, cwd, active, onFocus }: Props) {
       terminalStore.markStarted(id)
       window.wu.invoke('terminal:create', { id, cwd, cols: term.cols, rows: term.rows }).catch(fail)
     } else
-      void window.wu.invoke('terminal:attach', { id }).then((replay) => {
-        show(replay.data, replay.offset)
-        for (const e of queue) show(e.data, e.offset)
-        queue = []
-        ready = true
-      }, fail)
+      void window.wu.invoke('terminal:attach', { id }).then(
+        (replay) => {
+          show(replay.data, replay.offset, 0) // le rejeu n'a jamais été compté comme non acquitté
+          flush()
+        },
+        (e: unknown) => {
+          fail(e)
+          flush() // sans rejeu : on affiche quand même ce qui arrive, sans le retenir indéfiniment
+        },
+      )
 
     return () => {
       observer.disconnect()
