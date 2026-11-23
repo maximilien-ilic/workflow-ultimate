@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { AppInfo } from '../shared/ipc'
 import { ProjectSidebar } from './modules/projects/ProjectSidebar'
-import { ProjectPicker } from './modules/projects/ProjectPicker'
 import { useWorkspace } from './modules/projects/workspace'
 import { ShellLayout } from './modules/shell/ShellLayout'
 import { AgentOverview } from './modules/agents/AgentOverview'
 import { TerminalArea } from './modules/terminals/TerminalArea'
+import { ProjectPicker } from './modules/projects/ProjectPicker'
 
 export function App() {
   const workspace = useWorkspace()
@@ -16,6 +16,7 @@ export function App() {
   }, [])
   return (
     <ShellLayout leftPanel={<ProjectSidebar workspace={workspace} />}>
+      <ProjectPicker workspace={workspace} />
       <main>
         <h1>Workflow Ultimate</h1>
         {error ? (
@@ -25,7 +26,6 @@ export function App() {
         )}
         <TerminalArea />
         <AgentOverview />
-        <ProjectPicker workspace={workspace} />
       </main>
     </ShellLayout>
   )
