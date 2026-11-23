@@ -54,6 +54,14 @@ describe('repoRoot', () => {
     expect(listProjects(db)).toHaveLength(1)
   })
 
+  it('un --separate-git-dir lui-même nommé .git renvoie le dossier de travail, pas le stockage', async () => {
+    const repo = join(dir, 'checkout')
+    mkdirSync(repo)
+    mkdirSync(join(dir, 'stockage'))
+    git(repo, 'init', '-q', '-b', 'main', '--separate-git-dir', join(dir, 'stockage/.git'))
+    await expect(repoRoot(repo)).resolves.toBe(repo)
+  })
+
   it('gère un chemin qui contient un retour à la ligne', async () => {
     const repo = makeRepo(join(dir, 'mon\nrepo'))
     await expect(repoRoot(repo)).resolves.toBe(repo)
