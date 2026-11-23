@@ -26,4 +26,4 @@ export type HostEvent =
   | { type: 'data'; id: string; data: string }
   | { type: 'exit'; id: string; exitCode: number; signal: number | null }
   | { type: 'replay'; id: string; data: string }
-  | { type: 'error'; id: string; message: string }
+  | { type: 'error'; id: string; request: HostRequest['type']; message: string }
