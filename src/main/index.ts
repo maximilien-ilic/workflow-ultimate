@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { registerGlobalShortcuts } from './modules/shell/global-shortcuts'
 import { handle } from './modules/shell/ipc'
 import { registerSettings } from './modules/shell/settings'
 import { registerSingleInstance } from './modules/shell/single-instance'
@@ -15,4 +16,5 @@ handle('app:info', () => ({
 
 registerSettings()
 void app.whenReady().then(createMainWindow)
+void app.whenReady().then(registerGlobalShortcuts)
 app.on('window-all-closed', () => app.quit())
