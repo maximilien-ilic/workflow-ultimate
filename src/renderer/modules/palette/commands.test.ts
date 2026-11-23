@@ -22,7 +22,7 @@ describe('command registry', () => {
   })
 
   it('détecte les raccourcis réservés ou déjà utilisés après personnalisation', () => {
-    expect(shortcutConflict([left, right], {}, left.id, 'Ctrl+K')).toBe('Palette de commandes')
+    expect(shortcutConflict([left, right], {}, left.id, 'Ctrl+Shift+P')).toBe('Palette de commandes')
     expect(shortcutConflict([left, right], { right: 'Ctrl+J' }, left.id, 'Ctrl+J')).toBe(right.title)
     expect(shortcutConflict([left, right], { right: 'Ctrl+J' }, left.id, 'Ctrl+Alt+B')).toBeUndefined()
     expect(shortcutConflict([left, right], {}, left.id, 'Ctrl+B')).toBeUndefined()

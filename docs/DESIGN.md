@@ -5,7 +5,7 @@
 
 ## 1. Principes UX
 
-1. **Clavier d'abord.** Chaque action passe par la palette (Ctrl+K). La souris reste possible, jamais obligatoire.
+1. **Clavier d'abord.** Chaque action passe par la palette (Ctrl+Shift+P). La souris reste possible, jamais obligatoire.
 2. **L'attention va à ce qui attend.** Un agent bloqué sur une question est l'info la plus importante de l'écran : badge, son discret (désactivable), entrée en tête de liste.
 3. **Pas de modale bloquante** pour les actions courantes : on utilise des panneaux latéraux et des toasts avec « Annuler ».
 4. **État toujours visible** : branche, fichiers modifiés, agent en cours, CI. Pas besoin d'ouvrir quoi que ce soit pour savoir où on en est.
@@ -16,7 +16,7 @@
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│ ◉ projet ▸ worktree ▸ branche        [Ctrl+K rechercher…]      ●2 ◐1 ✓4   │ ← barre de titre (CSD)
+│ ◉ projet ▸ worktree ▸ branche        [Ctrl+Shift+P rechercher…]      ●2 ◐1 ✓4   │ ← barre de titre (CSD)
 ├──────────┬──────────────────────────────────────────────┬─────────────────┤
 │ PROJETS  │ [claude ●] [codex ◐] [term] [diff]       + │ CONTEXTE        │
 │ ▾ app-a  │                                              │ Tâche #12       │
@@ -28,13 +28,13 @@
 │ ● feat-12│                                              │ PR #34  CI ✓    │
 │ ◐ fix-9  │                                              │                 │
 ├──────────┴──────────────────────────────────────────────┴─────────────────┤
-│ ● 2 travaillent  ◐ 1 attend  │ app-a · feat-12 · +3 ↑1 │ CPU 12% │ ⌨ Ctrl+K │ ← barre d'état
+│ ● 2 travaillent  ◐ 1 attend  │ app-a · feat-12 · +3 ↑1 │ CPU 12% │ ⌨ Ctrl+Shift+P │ ← barre d'état
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Barre latérale gauche (Ctrl+B pour la masquer) : projets → worktrees, puis la liste des agents actifs.
+- Barre latérale gauche (Ctrl+Shift+B pour la masquer) : projets → worktrees, puis la liste des agents actifs.
 - Zone centrale en onglets, avec des splits (Ctrl+Shift+D vertical, Ctrl+Shift+E horizontal).
-- Panneau droit de contexte (Ctrl+Alt+B) : la tâche liée, les fichiers modifiés, la PR et la CI.
+- Panneau droit de contexte (Ctrl+Alt+Shift+B) : la tâche liée, les fichiers modifiés, la PR et la CI.
 - Mode focus (F11 / Ctrl+Shift+F) : seule la zone centrale reste affichée.
 - **Vue d'ensemble** (Ctrl+Shift+A) : une grille de tous les agents, de tous les projets, avec l'aperçu des 5 dernières lignes de chacun.
 
@@ -80,8 +80,8 @@ Thème sombre par défaut, thème clair complet ; option « suivre le thème KDE
 
 | Action | Raccourci |
 |---|---|
-| Palette de commandes | Ctrl+K |
-| Changer de projet / worktree | Ctrl+P |
+| Palette de commandes | Ctrl+Shift+P |
+| Changer de projet / worktree | Ctrl+Shift+O |
 | Nouvel agent dans le worktree courant | Ctrl+Shift+N |
 | Nouveau terminal | Ctrl+Shift+T |
 | Agent suivant qui attend une réponse | Ctrl+Shift+J (Ctrl+J est un caractère utile dans un shell) |
@@ -90,15 +90,19 @@ Thème sombre par défaut, thème clair complet ; option « suivre le thème KDE
 | Fichier modifié suivant / précédent (diff) | Alt+↓ / Alt+↑ |
 | Tableau de tâches | Ctrl+Shift+K |
 | Onglet n | Alt+1…9 |
+| Masquer/afficher la barre latérale | Ctrl+Shift+B |
+| Masquer/afficher le panneau de contexte | Ctrl+Alt+Shift+B |
+
+Dans un terminal, Ctrl+K, Ctrl+B et Ctrl+P restent disponibles pour readline. Ctrl+Alt+B peut aussi être reçu comme Meta+Ctrl+B par le shell. Les raccourcis applicatifs avec Ctrl utilisent Maj dans un terminal.
 
 ### Raccourcis globaux (hors fenêtre, modifiables dans Configuration système → Raccourcis)
 
 | Action | Raccourci |
 |---|---|
-| Afficher/masquer Workflow Ultimate | Meta+W |
+| Afficher/masquer Workflow Ultimate | Meta+Shift+W |
 | Aller au prochain agent qui attend une réponse | Meta+Shift+J |
 | Lancement rapide : petite fenêtre « prompt → agent » dans le projet actif | Meta+Shift+N |
-| Vue d'ensemble des agents | Meta+Shift+A |
+| Vue d'ensemble des agents | Meta+Alt+A |
 
 ## 6. Accessibilité
 

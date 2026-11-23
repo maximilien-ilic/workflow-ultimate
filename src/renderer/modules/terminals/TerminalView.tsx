@@ -13,6 +13,7 @@ type Props = {
   id: string
   cwd: string
   active: boolean
+  focusRequest: number
   onFocus: () => void
 }
 
@@ -46,7 +47,7 @@ const openOnCtrlClick = (event: MouseEvent, url: string) => {
   if (event.ctrlKey) void window.wu.invoke('shell:openUrl', { url })
 }
 
-export function TerminalView({ id, cwd, active, onFocus }: Props) {
+export function TerminalView({ id, cwd, active, focusRequest, onFocus }: Props) {
   const container = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const searchRef = useRef<SearchAddon | null>(null)
@@ -184,7 +185,7 @@ export function TerminalView({ id, cwd, active, onFocus }: Props) {
 
   useEffect(() => {
     if (active) termRef.current?.focus()
-  }, [active])
+  }, [active, focusRequest])
 
   return (
     <div className="terminal-pane" data-active={active} onFocus={onFocus} onMouseDown={onFocus}>

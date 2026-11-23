@@ -48,12 +48,24 @@ test("vue d'ensemble : l'agent en attente en tête, et Ctrl+Shift+J y ramène", 
   await expect(items.first()).toContainText('Claude · alpha — attend une réponse')
   await expect(items.first()).toContainText('Continuer ?') // aperçu des dernières lignes
   await expect(items.nth(1)).toContainText('terminé')
-  await page.keyboard.press('Escape')
+  await overview.getByRole('button', { name: /Claude · alpha/ }).click()
+  const focused = page.locator('.terminal-tab:not([hidden]) .xterm-helper-textarea')
+  await expect(focused).toBeFocused()
+  await page.keyboard.press('Alt+2')
+  await expect(beta).toHaveAttribute('aria-selected', 'true')
+  await expect(focused).toBeFocused()
+  await page.keyboard.press('Alt+1')
+  await expect(focused).toBeFocused()
+  await page.keyboard.press('Alt+2')
+  await expect(focused).toBeFocused()
 
   // Depuis beta (terminé), Ctrl+Shift+J ramène à alpha, le seul agent en attente.
   await page.locator('.terminal-tab:not([hidden]) .terminal-host').click()
   await page.keyboard.press('Control+Shift+J')
   await expect(page.getByRole('tab', { name: /Claude · alpha/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(focused).toBeFocused()
+  await page.keyboard.type('oui\n')
+  await expect(page.getByRole('tab', { name: /Claude · alpha/ })).toContainText('terminé')
 
   // Fermer le volet d'alpha : il disparaît de la vue d'ensemble, et Ctrl+Shift+J n'y mène plus.
   await page.locator('.terminal-tab:not([hidden]) .terminal-host').click()
