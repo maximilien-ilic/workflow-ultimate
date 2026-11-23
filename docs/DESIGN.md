@@ -84,7 +84,7 @@ Thème sombre par défaut, thème clair complet ; option « suivre le thème KDE
 | Changer de projet / worktree | Ctrl+P |
 | Nouvel agent dans le worktree courant | Ctrl+Shift+N |
 | Nouveau terminal | Ctrl+Shift+T |
-| Agent suivant qui attend une réponse | Ctrl+J |
+| Agent suivant qui attend une réponse | Ctrl+Shift+J (Ctrl+J est un caractère utile dans un shell) |
 | Vue d'ensemble des agents | Ctrl+Shift+A |
 | Ouvrir le diff du worktree | Ctrl+Shift+G |
 | Fichier modifié suivant / précédent (diff) | Alt+↓ / Alt+↑ |

@@ -21,6 +21,18 @@ const ack = (id: string, chars: number) => void window.wu.invoke('terminal:ack',
 // Lecture seule du texte affiché, par id de volet (le rendu WebGL ne laisse aucun texte dans le DOM).
 // Sert aux tests e2e et au débogage ; ne donne accès à rien que le renderer n'ait déjà.
 const mounted = new Map<string, Terminal>()
+
+// Dernières lignes non vides affichées par un terminal (aperçu de la vue d'ensemble des agents).
+export function lastLines(id: string, count: number): string[] {
+  const buffer = mounted.get(id)?.buffer.active
+  if (!buffer) return []
+  const lines: string[] = []
+  for (let i = buffer.length - 1; i >= 0 && lines.length < count; i--) {
+    const line = buffer.getLine(i)?.translateToString(true) ?? ''
+    if (line.trim()) lines.unshift(line)
+  }
+  return lines
+}
 ;(window as unknown as { __wuTerminalText: (id: string) => string }).__wuTerminalText = (id) => {
   const buffer = mounted.get(id)?.buffer.active
   if (!buffer) return ''
@@ -91,7 +103,7 @@ export function TerminalView({ id, cwd, active, onFocus }: Props) {
         return false
       }
       // Raccourcis de la zone de terminaux (onglets, splits) : laissés à la fenêtre.
-      if (ctrlShift && ['KeyD', 'KeyE', 'KeyT', 'KeyW'].includes(e.code)) return false
+      if (ctrlShift && ['KeyD', 'KeyE', 'KeyT', 'KeyW', 'KeyA', 'KeyJ'].includes(e.code)) return false
       if (e.altKey && !e.ctrlKey && /^Digit[1-9]$/.test(e.code)) return false
       return true
     })
