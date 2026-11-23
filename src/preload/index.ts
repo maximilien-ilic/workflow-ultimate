@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { IpcChannel, IpcRequest, IpcResponse, TerminalEvent } from '../shared/ipc'
+import type { AgentEvent, IpcChannel, IpcRequest, IpcResponse, TerminalEvent } from '../shared/ipc'
 
 const api = {
   invoke: <C extends IpcChannel>(channel: C, req: IpcRequest<C>): Promise<IpcResponse<C>> =>
@@ -11,6 +11,12 @@ const api = {
     const wrapped = (_: unknown, event: TerminalEvent) => listener(event)
     ipcRenderer.on('terminal:event', wrapped)
     return () => ipcRenderer.removeListener('terminal:event', wrapped)
+  },
+  // Changements d'état des agents lancés par cette fenêtre.
+  onAgentEvent: (listener: (event: AgentEvent) => void): (() => void) => {
+    const wrapped = (_: unknown, event: AgentEvent) => listener(event)
+    ipcRenderer.on('agent:event', wrapped)
+    return () => ipcRenderer.removeListener('agent:event', wrapped)
   },
 }
 export type WuApi = typeof api

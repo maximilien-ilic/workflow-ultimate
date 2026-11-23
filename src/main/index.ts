@@ -6,6 +6,9 @@ import { registerGlobalShortcuts } from './modules/shell/global-shortcuts'
 import { handle } from './modules/shell/ipc'
 import { installMainLogging } from './modules/shell/log'
 import { migrations } from './modules/shell/migrations'
+import { registerAgentHandlers } from './modules/agents/sessions'
+import { profileSocketPath } from './modules/agents/profile-socket'
+import { startAgentSocket } from './modules/agents/socket'
 import { registerProjectHandlers } from './modules/projects/ipc'
 import { registerTerminalHandlers } from './modules/terminals/ipc'
 import { startPtyHost } from './modules/terminals/pty-host'
@@ -32,7 +35,7 @@ handle('shell:openUrl', async ({ url }) => {
 })
 
 registerSettings()
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   let db
   try {
     db = openDatabase(join(dataDir(), 'app.db'), migrations)
@@ -44,8 +47,35 @@ void app.whenReady().then(() => {
   }
   registerProjectHandlers(db)
   const ptyHost = startPtyHost()
-  registerTerminalHandlers(ptyHost)
+  const terminals = registerTerminalHandlers(ptyHost)
+
+  // Agents : les hooks appellent wu-notify avec le Node embarqué (ELECTRON_RUN_AS_NODE) ; il écrit sur le socket.
+  // Toute erreur de socket (EACCES sur XDG_RUNTIME_DIR, chemin occupé…) est isolée : la fenêtre s'ouvre,
+  // les agents tournent, seul leur état ne se met plus à jour.
+  const socketPath = await profileSocketPath().catch((error: unknown) => {
+    console.error(`Chemin du socket des agents indisponible : ${String(error)}`)
+    return null
+  })
+  const agents = registerAgentHandlers(db, terminals, {
+    notify: {
+      node: process.execPath,
+      script: app.isPackaged
+        ? join(process.resourcesPath, 'wu-notify')
+        : join(__dirname, '../../resources/wu-notify'),
+    },
+    socketPath: socketPath ?? '',
+    claudeBin: process.env['WU_CLAUDE_BIN'] || 'claude',
+  })
+  const socket = socketPath
+    ? await startAgentSocket({
+        path: socketPath,
+        sessionAgent: agents.sessionAgent,
+        onEvent: agents.onSocketEvent,
+      }).catch((error: unknown) => console.error(`Socket des agents indisponible : ${String(error)}`))
+    : undefined
+
   app.on('will-quit', () => {
+    void socket?.close()
     ptyHost.stop()
     db.close()
   })

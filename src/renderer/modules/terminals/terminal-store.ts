@@ -55,6 +55,17 @@ export const terminalStore = {
     }
     set({ tabs: [...state.tabs, tab], activeTab: tab.id })
   },
+  // Onglet sur un terminal déjà lancé par le main (agent) : le volet s'y rattache au lieu d'en créer un.
+  openAttachedTab(cwd: string, title: string, paneId: string) {
+    const tab: Tab = {
+      id: crypto.randomUUID(),
+      title,
+      cwd,
+      tree: { type: 'pane', id: paneId },
+      activePane: paneId,
+    }
+    set({ tabs: [...state.tabs, tab], activeTab: tab.id })
+  },
   split(dir: 'row' | 'column') {
     const tab = activeTabOf()
     if (!tab) return

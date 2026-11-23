@@ -1,0 +1,45 @@
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { _electron, expect, test } from '@playwright/test'
+
+let dir: string
+test.beforeEach(() => {
+  dir = realpathSync(mkdtempSync(join(tmpdir(), 'wu-e2e-agent-')))
+})
+test.afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+test("un agent lancé depuis un projet remonte ses états jusqu'à l'onglet", async () => {
+  const repo = join(dir, 'proj')
+  mkdirSync(repo)
+  execFileSync('git', ['init', '-q', repo])
+
+  // Le faux agent remplace `claude` : mêmes événements que les vrais hooks, via wu-notify et le socket.
+  const app = await _electron.launch({
+    args: ['out/main/index.js'],
+    env: {
+      ...process.env,
+      XDG_DATA_HOME: join(dir, 'data'),
+      XDG_CONFIG_HOME: join(dir, 'config'),
+      WU_CLAUDE_BIN: resolve('tests/fixtures/fake-agent'),
+      FAKE_AGENT_SCENARIO: 'question',
+    },
+  })
+  const page = await app.firstWindow()
+  await page.evaluate((path) => window.wu.invoke('projects:add', { path }), repo)
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Claude dans proj' }).click()
+  const tab = page.getByRole('tab', { name: /Claude · proj/ })
+  await expect(tab).toContainText('attend une réponse')
+
+  await page.locator('.terminal-host').first().click()
+  await page.keyboard.type('oui\n')
+  await expect(tab).toContainText('terminé')
+
+  const sessions = await page.evaluate(() => window.wu.invoke('agents:list', {}))
+  expect(sessions).toHaveLength(1)
+  expect(sessions[0]).toMatchObject({ agent: 'claude-code', cwd: repo, state: 'done' })
+  await app.close()
+})

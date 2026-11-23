@@ -34,7 +34,25 @@ export function shellEnv(env: NodeJS.ProcessEnv = process.env): Record<string, s
   return { ...clean, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'workflow-ultimate' }
 }
 
-export function registerTerminalHandlers(host: PtyHost): void {
+export type SpawnSpec = {
+  id: string
+  owner: WebContents
+  cwd: string
+  file: string
+  args: string[]
+  env: Record<string, string>
+  cols: number
+  rows: number
+}
+
+// Lancement d'un processus dans un terminal (shell ou agent) ; `onExit` permet aux agents de suivre la fin.
+export type Terminals = {
+  spawn(spec: SpawnSpec): Promise<number>
+  onExit(listener: (id: string, exitCode: number) => void): void
+}
+
+export function registerTerminalHandlers(host: PtyHost): Terminals {
+  const exitListeners: ((id: string, exitCode: number) => void)[] = []
   const owners = new Map<string, WebContents>() // terminal → fenêtre qui reçoit sa sortie
   const flow = new FlowControl()
   const replays = new Pending<{ data: string; offset: number }>()
@@ -53,7 +71,10 @@ export function registerTerminalHandlers(host: PtyHost): void {
     if (event.type === 'error' && event.request === 'replay') replays.fail(event.id, new Error(event.message))
     if (event.type === 'data' && flow.onData(event.id, event.data.length) === 'pause')
       host.send({ type: 'pause', id: event.id })
-    if (event.type === 'exit') flow.forget(event.id)
+    if (event.type === 'exit') {
+      flow.forget(event.id)
+      for (const listener of exitListeners) listener(event.id, event.exitCode)
+    }
     // Fermeture confirmée par le pty-host (qu'il ait tourné ou non) : le main oublie le terminal.
     if (event.type === 'closed') {
       owners.delete(event.id)
@@ -76,20 +97,25 @@ export function registerTerminalHandlers(host: PtyHost): void {
     if (owners.get(id) !== sender) throw new Error(`Terminal ${id} inconnu`)
   }
 
-  handle('terminal:create', async ({ id, cwd, cols, rows }, event) => {
+  async function spawn({ id, owner, ...process }: SpawnSpec): Promise<number> {
     if (owners.has(id)) throw new Error(`Terminal ${id} déjà ouvert`)
-    owners.set(id, event.sender)
-    const shell = process.env['SHELL'] || '/bin/bash'
+    owners.set(id, owner)
     const spawned = spawns.wait(id, 5000)
-    host.send({ type: 'spawn', id, file: shell, args: [], cwd, env: shellEnv(), cols, rows })
+    host.send({ type: 'spawn', id, ...process })
     try {
-      return { pid: await spawned }
+      return await spawned
     } catch (error) {
       owners.delete(id) // échec du lancement : l'id est libéré, pas de faux succès
       // Un lancement confirmé après le délai laisserait un PTY orphelin : on le ferme d'office.
       host.send({ type: 'kill', id })
       throw error
     }
+  }
+
+  handle('terminal:create', async ({ id, cwd, cols, rows }, event) => {
+    const file = process.env['SHELL'] || '/bin/bash'
+    const pid = await spawn({ id, owner: event.sender, cwd, file, args: [], env: shellEnv(), cols, rows })
+    return { pid }
   })
   handle('terminal:write', ({ id, data }, event) => {
     owned(id, event.sender)
@@ -120,4 +146,6 @@ export function registerTerminalHandlers(host: PtyHost): void {
     host.send({ type: 'replay', id })
     return replay
   })
+
+  return { spawn, onExit: (listener) => void exitListeners.push(listener) }
 }

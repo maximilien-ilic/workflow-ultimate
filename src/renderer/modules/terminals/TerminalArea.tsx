@@ -1,4 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
+import { agentStore, stateLabel } from '../agents/agent-store'
+import { paneIds } from './pane-tree'
 import type { PaneTree } from './pane-tree'
 import { terminalStore, type Tab } from './terminal-store'
 import { TerminalView } from './TerminalView'
@@ -23,8 +25,23 @@ function Panes({ tab, tree }: { tab: Tab; tree: PaneTree }) {
   )
 }
 
+// Titre d'onglet : état de l'agent (icône + texte pour les lecteurs d'écran), s'il y en a un.
+function tabTitle(tab: Tab) {
+  const state = paneIds(tab.tree)
+    .map((id) => agentStore.stateOf(id))
+    .find(Boolean)
+  if (!state) return tab.title
+  const { icon, text } = stateLabel[state]
+  return (
+    <>
+      <span aria-hidden="true">{icon}</span> {tab.title} <span className="visually-hidden">({text})</span>
+    </>
+  )
+}
+
 export function TerminalArea() {
   const { tabs, activeTab } = useSyncExternalStore(terminalStore.subscribe, terminalStore.get)
+  useSyncExternalStore(agentStore.subscribe, agentStore.version) // re-rendu quand un agent change d'état
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -62,7 +79,7 @@ export function TerminalArea() {
             aria-selected={tab.id === activeTab}
             onClick={() => terminalStore.selectTab(i)}
           >
-            {tab.title}
+            {tabTitle(tab)}
           </button>
         ))}
       </div>

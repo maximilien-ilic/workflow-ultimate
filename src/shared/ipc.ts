@@ -26,11 +26,37 @@ export const ipcRequestSchemas = {
   'terminal:ack': z.object({ id: z.uuid(), chars: z.number().int().min(0).max(10_000_000) }).strict(),
   // Lien cliqué dans un terminal : ouvert dans le navigateur du système, http(s) seulement.
   'shell:openUrl': z.object({ url: z.url({ protocol: /^https?$/ }).max(4096) }).strict(),
+  // Lance Claude Code dans un nouveau terminal `terminalId` (le renderer s'y rattache ensuite).
+  'agents:start': z
+    .object({
+      terminalId: z.uuid(),
+      cwd: absolutePath,
+      agent: z.literal('claude-code'),
+      prompt: z.string().max(20_000).optional(),
+      cols: dimension,
+      rows: dimension,
+    })
+    .strict(),
+  'agents:resume': z
+    .object({ sessionId: z.uuid(), terminalId: z.uuid(), cols: dimension, rows: dimension })
+    .strict(),
+  'agents:list': z.object({}).strict(),
 } satisfies Record<string, z.ZodType>
 
 export type AppInfo = { name: string; version: string; electron: string; node: string }
 export type Project = { id: string; path: string; name: string; addedAt: number }
 // Résultat d'un ajout par sélecteur : projets ajoutés et chemins refusés (avec la raison).
+export type AgentState = 'starting' | 'working' | 'waiting' | 'done' | 'error'
+export type AgentSession = {
+  id: string
+  agent: 'claude-code'
+  cwd: string
+  state: AgentState
+  terminalId: string | null // null : pas de terminal ouvert dans cette exécution de l'appli
+  updatedAt: number
+}
+// Poussé sur le canal `agent:event` à la fenêtre qui a lancé l'agent.
+export type AgentEvent = { sessionId: string; terminalId: string; state: AgentState }
 export type PickResult = { added: Project[]; rejected: { path: string; reason: string }[] }
 
 interface IpcResponses {
@@ -46,6 +72,9 @@ interface IpcResponses {
   'terminal:attach': { data: string; offset: number }
   'terminal:ack': null
   'shell:openUrl': null
+  'agents:start': AgentSession
+  'agents:resume': AgentSession
+  'agents:list': AgentSession[]
   'diagnostics:report': string
   'settings:get': Settings
   'settings:set': null
