@@ -1,7 +1,11 @@
 #!/bin/sh
 
-scenario=${1:-success}
-agent=${2:-claude-code}
+# Lancé à la place de `claude` par l'appli (WU_CLAUDE_BIN), il reçoit les options de Claude
+# (--session-id, --settings…) : le scénario vient alors de FAKE_AGENT_SCENARIO.
+case "${1:-}" in
+  -*) scenario=${FAKE_AGENT_SCENARIO:-success}; agent=claude-code ;;
+  *) scenario=${1:-success}; agent=${2:-claude-code} ;;
+esac
 case "$scenario" in
   success|error|question) ;;
   *) printf '%s\n' 'Scénario attendu : success, error ou question' >&2; exit 2 ;;

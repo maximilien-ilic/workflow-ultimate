@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type DragEvent } from 'react'
 import type { PickResult, Project } from '../../../shared/ipc'
+import { agentStore } from '../agents/agent-store'
 import { terminalStore } from '../terminals/terminal-store'
 
 // shortcut: panneau sans style ni barre latérale ; la disposition (#8) et la barre latérale (#11) le remplaceront
@@ -57,6 +58,28 @@ export function ProjectsPanel() {
           {projects.map((p) => (
             <li key={p.id}>
               <strong>{p.name}</strong> <small>{p.path}</small>{' '}
+              <button
+                aria-label={`Claude dans ${p.name}`}
+                onClick={() => {
+                  const terminalId = crypto.randomUUID()
+                  run(
+                    window.wu
+                      .invoke('agents:start', {
+                        terminalId,
+                        cwd: p.path,
+                        agent: 'claude-code',
+                        cols: 120,
+                        rows: 30,
+                      })
+                      .then(() => {
+                        agentStore.started(terminalId)
+                        terminalStore.openAttachedTab(p.path, `Claude · ${p.name}`, terminalId)
+                      }),
+                  )
+                }}
+              >
+                Claude
+              </button>{' '}
               <button
                 aria-label={`Terminal dans ${p.name}`}
                 onClick={() => terminalStore.openTab(p.path, p.name)}

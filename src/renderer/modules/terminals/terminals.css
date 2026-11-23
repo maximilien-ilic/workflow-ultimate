@@ -8,3 +8,4 @@
 .terminal-pane[data-active='true'] { outline-color: var(--accent, #3daee9); }
 .terminal-host { flex: 1; min-width: 0; min-height: 0; }
 .terminal-search { position: absolute; top: 4px; right: 4px; z-index: 2; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
