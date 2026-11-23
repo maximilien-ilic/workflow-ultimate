@@ -1,8 +1,9 @@
-import { app, dialog, shell } from 'electron'
+import { app, dialog } from 'electron'
 import { join } from 'node:path'
 import { dataDir, openDatabase } from './modules/shell/db'
 import { buildDiagnosticsReport } from './modules/shell/diagnostics'
 import { registerGlobalShortcuts } from './modules/shell/global-shortcuts'
+import { registerExternalLinks } from './modules/shell/external-links'
 import { handle } from './modules/shell/ipc'
 import { installMainLogging } from './modules/shell/log'
 import { migrations } from './modules/shell/migrations'
@@ -28,11 +29,8 @@ handle('app:info', () => ({
   node: process.versions.node,
 }))
 
-// Le schéma n'accepte que http(s) : pas de file://, pas de schéma exotique lancé depuis un terminal.
-handle('shell:openUrl', async ({ url }) => {
-  await shell.openExternal(url)
-  return null
-})
+// Liens des terminaux : github.com (tickets et PR du projet) s'ouvre directement, le reste après confirmation.
+registerExternalLinks(['https://github.com'])
 
 registerSettings()
 void app.whenReady().then(async () => {
