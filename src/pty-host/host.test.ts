@@ -95,11 +95,32 @@ describe('pty-host', () => {
     await waitFor(() => output('t2').includes('toujours-vivant'))
   })
 
+  it('numérote la sortie : chaque morceau et le rejeu portent leur position dans le flux', async () => {
+    const { host, events, output, waitFor } = setup()
+    host.handle({ type: 'spawn', id: 't1', file: 'sh', args: ['-c', 'echo un; echo deux'], ...base })
+    await waitFor(() => events.some((e) => e.type === 'exit'))
+    const chunks = events.filter((e) => e.type === 'data') as { data: string; offset: number }[]
+    let total = 0
+    for (const c of chunks) expect(c.offset).toBe((total += c.data.length))
+    host.handle({ type: 'replay', id: 't1' })
+    expect(events.at(-1)).toMatchObject({ type: 'replay', offset: total, data: output('t1') })
+  })
+
+  it('kill sur un terminal déjà terminé le libère aussi, avec confirmation', async () => {
+    const { host, events, waitFor } = setup()
+    host.handle({ type: 'spawn', id: 't1', file: 'sh', args: ['-c', 'true'], ...base })
+    await waitFor(() => events.some((e) => e.type === 'exit'))
+    host.handle({ type: 'kill', id: 't1' })
+    expect(events.at(-1)).toEqual({ type: 'closed', id: 't1' })
+  })
+
   it('kill termine le processus et libère le terminal', async () => {
     const { host, events, waitFor } = setup()
     host.handle({ type: 'spawn', id: 't1', file: 'sh', args: ['-c', 'sleep 30'], ...base })
     host.handle({ type: 'kill', id: 't1' })
     await waitFor(() => events.some((e) => e.type === 'exit'))
+    // La fermeture est confirmée explicitement : le main peut oublier le terminal.
+    await waitFor(() => events.some((e) => e.type === 'closed' && e.id === 't1'))
     host.handle({ type: 'kill', id: 't1' })
     host.handle({ type: 'replay', id: 't1' })
     expect(events.at(-1)).toMatchObject({ type: 'error', id: 't1' })

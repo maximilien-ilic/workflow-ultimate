@@ -3,13 +3,17 @@ import { spawn, type IPty } from 'node-pty'
 import type { HostEvent, HostRequest } from '../shared/pty-protocol'
 import { RingBuffer } from './ring-buffer'
 
-type Terminal = { pty: IPty; buffer: RingBuffer; exited: boolean }
+type Terminal = { pty: IPty; buffer: RingBuffer; exited: boolean; closing: boolean; total: number }
 
 const isDirectory = (path: string) => statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false
 
 // shortcut: 1 M caractères par terminal (≈ 1 à 4 Mo) ; à rendre réglable si on garde beaucoup de terminaux ouverts
 export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_000) {
   const terminals = new Map<string, Terminal>()
+  const close = (id: string) => {
+    terminals.delete(id)
+    send({ type: 'closed', id })
+  }
   // Chaque erreur dit quelle requête l'a causée : le main ne fait échouer que l'attente correspondante.
   const error = (req: HostRequest, message: string) =>
     send({ type: 'error', id: req.id, request: req.type, message })
@@ -29,15 +33,23 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
     } catch (e) {
       return error(req, `Lancement impossible de ${req.file} : ${(e as Error).message}`)
     }
-    const term: Terminal = { pty, buffer: new RingBuffer(bufferSize), exited: false }
+    const term: Terminal = {
+      pty,
+      buffer: new RingBuffer(bufferSize),
+      exited: false,
+      closing: false,
+      total: 0,
+    }
     terminals.set(req.id, term)
     pty.onData((data) => {
       term.buffer.push(data)
-      send({ type: 'data', id: req.id, data })
+      term.total += data.length
+      send({ type: 'data', id: req.id, data, offset: term.total })
     })
     pty.onExit(({ exitCode, signal }) => {
       term.exited = true
       send({ type: 'exit', id: req.id, exitCode, signal: signal || null })
+      if (term.closing) close(req.id) // fermé par l'utilisateur : plus personne ne rejouera ce tampon
     })
     send({ type: 'spawned', id: req.id, pid: pty.pid })
   }
@@ -58,10 +70,13 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
     if (!term) return error(req, `Terminal « ${req.id} » inconnu`)
     switch (req.type) {
       case 'replay':
-        return send({ type: 'replay', id: req.id, data: term.buffer.read() })
+        return send({ type: 'replay', id: req.id, data: term.buffer.read(), offset: term.total })
       case 'kill':
-        if (term.exited) terminals.delete(req.id)
-        else term.pty.kill()
+        if (term.exited) close(req.id)
+        else {
+          term.closing = true
+          term.pty.kill()
+        }
         return
       case 'pause':
         return term.pty.pause()

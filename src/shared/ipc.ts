@@ -24,6 +24,8 @@ export const ipcRequestSchemas = {
   'terminal:attach': z.object({ id: z.uuid() }).strict(),
   // Accusé de réception : nombre de caractères affichés par le renderer (contrôle de flux).
   'terminal:ack': z.object({ id: z.uuid(), chars: z.number().int().min(0).max(10_000_000) }).strict(),
+  // Lien cliqué dans un terminal : ouvert dans le navigateur du système, http(s) seulement.
+  'shell:openUrl': z.object({ url: z.url({ protocol: /^https?$/ }).max(4096) }).strict(),
 } satisfies Record<string, z.ZodType>
 
 export type AppInfo = { name: string; version: string; electron: string; node: string }
@@ -41,8 +43,9 @@ interface IpcResponses {
   'terminal:write': null
   'terminal:resize': null
   'terminal:kill': null
-  'terminal:attach': string
+  'terminal:attach': { data: string; offset: number }
   'terminal:ack': null
+  'shell:openUrl': null
   'diagnostics:report': string
   'settings:get': Settings
   'settings:set': null
@@ -54,7 +57,8 @@ export type IpcResponse<C extends IpcChannel> = IpcResponses[C]
 
 // Événements poussés par le main vers le renderer, sur le canal `terminal:event`.
 export type TerminalEvent =
-  | { type: 'data'; id: string; data: string }
+  // offset : position dans le flux du terminal à la fin de ce morceau (voir terminal:attach).
+  | { type: 'data'; id: string; data: string; offset: number }
   | { type: 'exit'; id: string; exitCode: number; signal: number | null }
   | { type: 'error'; id: string; message: string }
   // Le pty-host a planté et redémarré : tous les terminaux ouverts sont perdus.

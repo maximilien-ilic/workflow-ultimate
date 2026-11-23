@@ -35,10 +35,9 @@ export function shellEnv(env: NodeJS.ProcessEnv = process.env): Record<string, s
 }
 
 export function registerTerminalHandlers(host: PtyHost): void {
-  // shortcut: une entrée par terminal, jamais libérée (quelques octets) ; à nettoyer quand les onglets (#14) fermeront leurs terminaux
   const owners = new Map<string, WebContents>() // terminal → fenêtre qui reçoit sa sortie
   const flow = new FlowControl()
-  const replays = new Pending<string>()
+  const replays = new Pending<{ data: string; offset: number }>()
   const spawns = new Pending<number>()
 
   const sendTo = (id: string, event: TerminalEvent) => {
@@ -47,7 +46,7 @@ export function registerTerminalHandlers(host: PtyHost): void {
   }
 
   host.events.on('event', (event: HostEvent) => {
-    if (event.type === 'replay') return replays.settle(event.id, event.data)
+    if (event.type === 'replay') return replays.settle(event.id, { data: event.data, offset: event.offset })
     if (event.type === 'spawned') return spawns.settle(event.id, event.pid)
     // Seule l'attente qui correspond à la requête en erreur échoue (une écriture ratée ne casse pas un rejeu).
     if (event.type === 'error' && event.request === 'spawn') spawns.fail(event.id, new Error(event.message))
@@ -55,6 +54,12 @@ export function registerTerminalHandlers(host: PtyHost): void {
     if (event.type === 'data' && flow.onData(event.id, event.data.length) === 'pause')
       host.send({ type: 'pause', id: event.id })
     if (event.type === 'exit') flow.forget(event.id)
+    // Fermeture confirmée par le pty-host (qu'il ait tourné ou non) : le main oublie le terminal.
+    if (event.type === 'closed') {
+      owners.delete(event.id)
+      flow.forget(event.id)
+      return
+    }
     sendTo(event.id, event)
   })
   host.events.on('restarted', () => {
