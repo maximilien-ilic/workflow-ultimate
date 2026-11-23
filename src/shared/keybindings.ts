@@ -1,8 +1,8 @@
-export const paletteKeybinding = 'Ctrl+K'
+export const paletteKeybinding = 'Ctrl+Shift+P'
 
 export const panelCommandBindings = {
-  'shell.toggle-left': 'Ctrl+B',
-  'shell.toggle-right': 'Ctrl+Alt+B',
+  'shell.toggle-left': 'Ctrl+Shift+B',
+  'shell.toggle-right': 'Ctrl+Alt+Shift+B',
 }
 
 export type Keybindings = Record<string, string>

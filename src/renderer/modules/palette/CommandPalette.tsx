@@ -55,8 +55,10 @@ export function CommandPalette({
       if (!enabled || event.defaultPrevented || event.repeat || event.isComposing) return
       const binding = eventKeybinding(event)
       if (!binding || dialog.current?.open) return
+      if (!event.shiftKey && event.target instanceof Element && event.target.closest('.terminal-host')) return
       if (binding === paletteKeybinding) {
         event.preventDefault()
+        event.stopPropagation()
         show()
         return
       }
@@ -64,12 +66,14 @@ export function CommandPalette({
       const command = commands.find((entry) => commandKeybinding(entry, keybindings) === binding)
       if (command) {
         event.preventDefault()
+        event.stopPropagation()
         command.run()
       }
     }
 
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    // Les raccourcis applicatifs reconnus passent avant xterm, qui reçoit toutes les autres touches.
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [commands, enabled, keybindings, show])
 
   useEffect(() => {
