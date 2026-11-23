@@ -5,11 +5,15 @@ import { lastLines } from '../terminals/TerminalView'
 import { agentStore, stateLabel } from './agent-store'
 import { nextWaiting, sortForOverview } from './overview'
 
+// Seuls les agents dont le volet est encore ouvert : un volet fermé n'est plus atteignable.
+const openAgents = () => agentStore.all().filter(([terminalId]) => terminalStore.hasPane(terminalId))
+
 // Vue d'ensemble (Ctrl+Shift+A) : tous les agents, ceux qui attendent en premier, avec un aperçu.
 // Ctrl+Shift+J va au prochain agent en attente (pas Ctrl+J : c'est un caractère utile dans un shell).
 export function AgentOverview() {
   const dialog = useRef<HTMLDialogElement>(null)
   useSyncExternalStore(agentStore.subscribe, agentStore.version)
+  useSyncExternalStore(terminalStore.subscribe, terminalStore.get) // un volet fermé disparaît de la vue
   const [, tick] = useState(0)
 
   useEffect(() => {
@@ -24,7 +28,7 @@ export function AgentOverview() {
       title: 'Agent suivant en attente',
       keybinding: 'Ctrl+Shift+J',
       run() {
-        const next = nextWaiting(sortForOverview(agentStore.all()), terminalStore.activePane())
+        const next = nextWaiting(sortForOverview(openAgents()), terminalStore.activePane())
         if (next) terminalStore.showPane(next)
       },
     })
@@ -37,7 +41,7 @@ export function AgentOverview() {
     }
   }, [])
 
-  const agents = sortForOverview(agentStore.all())
+  const agents = sortForOverview(openAgents())
   return (
     <dialog ref={dialog} className="agent-overview" aria-label="Vue d’ensemble des agents">
       <h2>Agents</h2>

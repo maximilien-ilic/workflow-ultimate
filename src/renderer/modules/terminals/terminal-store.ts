@@ -86,6 +86,7 @@ export const terminalStore = {
     if (tab) this.focusPane(tab.id, paneId)
   },
   activePane: () => activeTabOf()?.activePane ?? null,
+  hasPane: (paneId: string) => state.tabs.some((t) => paneIds(t.tree).includes(paneId)),
   selectTab(index: number) {
     const tab = state.tabs[index]
     if (tab) set({ tabs: state.tabs, activeTab: tab.id })

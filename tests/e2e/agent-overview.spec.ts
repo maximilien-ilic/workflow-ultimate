@@ -54,5 +54,12 @@ test("vue d'ensemble : l'agent en attente en tête, et Ctrl+Shift+J y ramène", 
   await page.locator('.terminal-tab:not([hidden]) .terminal-host').click()
   await page.keyboard.press('Control+Shift+J')
   await expect(page.getByRole('tab', { name: /Claude · alpha/ })).toHaveAttribute('aria-selected', 'true')
+
+  // Fermer le volet d'alpha : il disparaît de la vue d'ensemble, et Ctrl+Shift+J n'y mène plus.
+  await page.locator('.terminal-tab:not([hidden]) .terminal-host').click()
+  await page.keyboard.press('Control+Shift+W')
+  await page.keyboard.press('Control+Shift+A')
+  await expect(overview.getByRole('listitem')).toHaveCount(1)
+  await expect(overview.getByRole('listitem').first()).toContainText('Claude · beta')
   await app.close()
 })
