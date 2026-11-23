@@ -99,10 +99,10 @@ Dans un terminal, Ctrl+K, Ctrl+B et Ctrl+P restent disponibles pour readline. Ct
 
 | Action | Raccourci |
 |---|---|
-| Afficher/masquer Workflow Ultimate | Meta+W |
+| Afficher/masquer Workflow Ultimate | Meta+Shift+W |
 | Aller au prochain agent qui attend une réponse | Meta+Shift+J |
 | Lancement rapide : petite fenêtre « prompt → agent » dans le projet actif | Meta+Shift+N |
-| Vue d'ensemble des agents | Meta+Shift+A |
+| Vue d'ensemble des agents | Meta+Alt+A |
 
 ## 6. Accessibilité
 
