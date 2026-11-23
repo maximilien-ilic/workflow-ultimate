@@ -44,7 +44,10 @@ test('un terminal tourne dans le pty-host et survit au rechargement du renderer'
   await expect.poll(() => output(page)).toContain('resultat-42')
 
   await page.reload()
-  const replay = await page.evaluate((id) => window.wu.invoke('terminal:attach', { id }), id)
+  const replay = await page.evaluate(
+    (id) => window.wu.invoke('terminal:attach', { id }).then((r) => r.data),
+    id,
+  )
   expect(replay).toContain('resultat-42')
 
   await listen(page, id)
@@ -69,7 +72,7 @@ test('un shell survit au plantage forcé du renderer et sa sortie est réaffich�
     id,
   )
   await expect
-    .poll(() => page.evaluate((id) => window.wu.invoke('terminal:attach', { id }), id))
+    .poll(() => page.evaluate((id) => window.wu.invoke('terminal:attach', { id }).then((r) => r.data), id))
     .toContain('pret-7')
 
   // Plantage puis rechargement pilotés depuis le main : la page Playwright plantée n'est plus utilisable,
@@ -90,7 +93,7 @@ test('un shell survit au plantage forcé du renderer et sa sortie est réaffich�
         BrowserWindow.getAllWindows()[0]!.webContents.executeJavaScript(code) as Promise<string>,
       code,
     )
-  const attach = `window.wu.invoke('terminal:attach', { id: ${JSON.stringify(id)} })`
+  const attach = `window.wu.invoke('terminal:attach', { id: ${JSON.stringify(id)} }).then((r) => r.data)`
   expect(await inRenderer(attach)).not.toContain('repris-42')
   await inRenderer(`window.wu.invoke('terminal:write', { id: ${JSON.stringify(id)}, data: '21\\n' })`)
   await expect.poll(() => inRenderer(attach), { timeout: 10_000 }).toContain('repris-42')

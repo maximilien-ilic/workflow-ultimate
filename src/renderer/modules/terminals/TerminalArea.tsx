@@ -17,7 +17,6 @@ function Panes({ tab, tree }: { tab: Tab; tree: PaneTree }) {
       key={tree.id}
       id={tree.id}
       cwd={tab.cwd}
-      isNew={terminalStore.isNew(tree.id)}
       active={tab.activePane === tree.id}
       onFocus={() => terminalStore.focusPane(tab.id, tree.id)}
     />

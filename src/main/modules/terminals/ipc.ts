@@ -34,10 +34,10 @@ export function shellEnv(env: NodeJS.ProcessEnv = process.env): Record<string, s
 }
 
 export function registerTerminalHandlers(host: PtyHost): void {
-  // shortcut: une entrée par terminal, jamais libérée (quelques octets) ; à nettoyer quand les onglets (#14) fermeront leurs terminaux
   const owners = new Map<string, WebContents>() // terminal → fenêtre qui reçoit sa sortie
   const flow = new FlowControl()
-  const replays = new Pending<string>()
+  const replays = new Pending<{ data: string; offset: number }>()
+  const closing = new Set<string>() // fermés par le renderer : oubliés dès la fin du processus
   const spawns = new Pending<number>()
 
   const sendTo = (id: string, event: TerminalEvent) => {
@@ -46,7 +46,7 @@ export function registerTerminalHandlers(host: PtyHost): void {
   }
 
   host.events.on('event', (event: HostEvent) => {
-    if (event.type === 'replay') return replays.settle(event.id, event.data)
+    if (event.type === 'replay') return replays.settle(event.id, { data: event.data, offset: event.offset })
     if (event.type === 'spawned') return spawns.settle(event.id, event.pid)
     if (event.type === 'error') {
       spawns.fail(event.id, new Error(event.message))
@@ -56,6 +56,7 @@ export function registerTerminalHandlers(host: PtyHost): void {
       host.send({ type: 'pause', id: event.id })
     if (event.type === 'exit') flow.forget(event.id)
     sendTo(event.id, event)
+    if (event.type === 'exit' && closing.delete(event.id)) owners.delete(event.id)
   })
   host.events.on('restarted', () => {
     const lost = new Error('pty-host redémarré : terminal perdu')
@@ -96,6 +97,7 @@ export function registerTerminalHandlers(host: PtyHost): void {
   })
   handle('terminal:kill', ({ id }, event) => {
     owned(id, event.sender)
+    closing.add(id)
     host.send({ type: 'kill', id })
     return null
   })

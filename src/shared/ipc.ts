@@ -42,7 +42,7 @@ interface IpcResponses {
   'terminal:write': null
   'terminal:resize': null
   'terminal:kill': null
-  'terminal:attach': string
+  'terminal:attach': { data: string; offset: number }
   'terminal:ack': null
   'shell:openUrl': null
   'settings:get': Settings
@@ -55,7 +55,8 @@ export type IpcResponse<C extends IpcChannel> = IpcResponses[C]
 
 // Événements poussés par le main vers le renderer, sur le canal `terminal:event`.
 export type TerminalEvent =
-  | { type: 'data'; id: string; data: string }
+  // offset : position dans le flux du terminal à la fin de ce morceau (voir terminal:attach).
+  | { type: 'data'; id: string; data: string; offset: number }
   | { type: 'exit'; id: string; exitCode: number; signal: number | null }
   | { type: 'error'; id: string; message: string }
   // Le pty-host a planté et redémarré : tous les terminaux ouverts sont perdus.

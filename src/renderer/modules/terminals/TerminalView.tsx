@@ -6,19 +6,35 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useState } from 'react'
+import { terminalStore } from './terminal-store'
+import { unseen } from './unseen'
 
 type Props = {
   id: string
   cwd: string
-  // false : le PTY existe déjà (après un rechargement du renderer), on rejoue sa sortie au lieu de le créer.
-  isNew: boolean
   active: boolean
   onFocus: () => void
 }
 
 const ack = (id: string, chars: number) => void window.wu.invoke('terminal:ack', { id, chars })
 
-export function TerminalView({ id, cwd, isNew, active, onFocus }: Props) {
+// Lecture seule du texte affiché, par id de volet (le rendu WebGL ne laisse aucun texte dans le DOM).
+// Sert aux tests e2e et au débogage ; ne donne accès à rien que le renderer n'ait déjà.
+const mounted = new Map<string, Terminal>()
+;(window as unknown as { __wuTerminalText: (id: string) => string }).__wuTerminalText = (id) => {
+  const buffer = mounted.get(id)?.buffer.active
+  if (!buffer) return ''
+  const lines: string[] = []
+  for (let i = 0; i < buffer.length; i++) lines.push(buffer.getLine(i)?.translateToString(true) ?? '')
+  return lines.join('\n').trimEnd()
+}
+
+// Ctrl+clic ouvre le lien dans le navigateur du système (http/https seulement, vérifié par le main).
+const openOnCtrlClick = (event: MouseEvent, url: string) => {
+  if (event.ctrlKey) void window.wu.invoke('shell:openUrl', { url })
+}
+
+export function TerminalView({ id, cwd, active, onFocus }: Props) {
   const container = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const searchRef = useRef<SearchAddon | null>(null)
@@ -32,7 +48,9 @@ export function TerminalView({ id, cwd, isNew, active, onFocus }: Props) {
       fontSize: 13,
       scrollback: 10_000,
       allowProposedApi: true, // requis par l'addon image (sixel)
+      linkHandler: { activate: openOnCtrlClick }, // liens OSC 8 émis par les programmes
     })
+    mounted.set(id, term)
     termRef.current = term
     const fit = new FitAddon()
     const search = new SearchAddon()
@@ -40,12 +58,7 @@ export function TerminalView({ id, cwd, isNew, active, onFocus }: Props) {
     term.loadAddon(fit)
     term.loadAddon(search)
     term.loadAddon(new ImageAddon())
-    // Ctrl+clic ouvre le lien dans le navigateur du système (http/https seulement, vérifié par le main).
-    term.loadAddon(
-      new WebLinksAddon((event, url) => {
-        if (event.ctrlKey) void window.wu.invoke('shell:openUrl', { url })
-      }),
-    )
+    term.loadAddon(new WebLinksAddon(openOnCtrlClick)) // URL repérées dans le texte
     term.open(el)
     try {
       const webgl = new WebglAddon()
@@ -83,14 +96,29 @@ export function TerminalView({ id, cwd, isNew, active, onFocus }: Props) {
       return true
     })
 
+    // Frontière ordonnée rejeu / direct : l'écran contient le flux jusqu'à `cursor`. Tant que le rejeu
+    // n'est pas arrivé, la sortie en direct attend dans `queue`, puis seule sa partie inédite est écrite.
+    const isNew = terminalStore.isNew(id) // lu au montage (pas en prop) : un remontage rattache au lieu de recréer
+    let cursor = 0
+    let ready = isNew
+    let queue: { data: string; offset: number }[] = []
+    const show = (data: string, offset: number) => {
+      const fresh = unseen(cursor, data, offset)
+      cursor = Math.max(cursor, offset)
+      if (fresh) term.write(fresh)
+    }
+
     const unsubscribe = window.wu.onTerminalEvent((event) => {
       if (event.type === 'host-restarted') {
         term.write('\r\n\x1b[33m[pty-host redémarré : ce terminal est perdu]\x1b[0m\r\n')
         return
       }
       if (event.id !== id) return
-      if (event.type === 'data') term.write(event.data, () => ack(id, event.data.length))
-      else if (event.type === 'exit')
+      if (event.type === 'data') {
+        if (ready) show(event.data, event.offset)
+        else queue.push(event)
+        term.write('', () => ack(id, event.data.length)) // acquitté quand xterm a traité ce qui précède
+      } else if (event.type === 'exit')
         term.write(`\r\n\x1b[2m[processus terminé, code ${event.exitCode}]\x1b[0m\r\n`)
       else term.write(`\r\n\x1b[31m[${event.message}]\x1b[0m\r\n`)
     })
@@ -102,18 +130,25 @@ export function TerminalView({ id, cwd, isNew, active, onFocus }: Props) {
     const observer = new ResizeObserver(() => fit.fit())
     observer.observe(el)
 
-    if (isNew) void window.wu.invoke('terminal:create', { id, cwd, cols: term.cols, rows: term.rows })
-    else
-      void window.wu.invoke('terminal:attach', { id }).then(
-        (replay) => term.write(replay),
-        (e: unknown) => term.write(`\x1b[31m[${String(e)}]\x1b[0m\r\n`),
-      )
+    const fail = (e: unknown) => term.write(`\x1b[31m[${String(e)}]\x1b[0m\r\n`)
+    if (isNew) {
+      // Marqué lancé dès l'envoi : un remontage immédiat (split juste après l'ouverture) se rattache.
+      terminalStore.markStarted(id)
+      window.wu.invoke('terminal:create', { id, cwd, cols: term.cols, rows: term.rows }).catch(fail)
+    } else
+      void window.wu.invoke('terminal:attach', { id }).then((replay) => {
+        show(replay.data, replay.offset)
+        for (const e of queue) show(e.data, e.offset)
+        queue = []
+        ready = true
+      }, fail)
 
     return () => {
       observer.disconnect()
       input.dispose()
       resized.dispose()
       unsubscribe()
+      mounted.delete(id)
       term.dispose()
       termRef.current = null
     }

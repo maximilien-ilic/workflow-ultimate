@@ -39,8 +39,9 @@ export const terminalStore = {
     return () => listeners.delete(listener)
   },
   get: () => state,
-  // Un volet créé dans cette session de renderer doit être lancé ; un volet restauré doit être rattaché.
+  // Un volet pas encore lancé doit créer son PTY ; tout autre (restauré, ou remonté après un split) s'y rattache.
   isNew: (paneId: string) => state.created.has(paneId),
+  markStarted: (paneId: string) => void state.created.delete(paneId),
 
   openTab(cwd: string, title: string) {
     const pane = crypto.randomUUID()
