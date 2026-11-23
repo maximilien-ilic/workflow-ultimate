@@ -14,11 +14,20 @@ export const ipcRequestSchemas = {
   'projects:pick': z.object({ mode: z.enum(['repo', 'scan']) }).strict(),
   'settings:get': z.object({}).strict(),
   'settings:set': settingsSchema,
+  'worktrees:list': z.object({ projectId: z.uuid() }).strict(),
+  'worktrees:create': z
+    .object({ projectId: z.uuid(), branch: z.string().min(1).max(200), create: z.boolean() })
+    .strict(),
+  // Ticket GitHub #n → worktree sur la branche feat/<n>-<titre> (créée si besoin).
+  'worktrees:createFromIssue': z.object({ projectId: z.uuid(), issue: z.number().int().positive() }).strict(),
+  // Sans `force`, un worktree avec des changements non commités n'est pas supprimé : on renvoie leur nombre.
+  'worktrees:remove': z.object({ projectId: z.uuid(), path: absolutePath, force: z.boolean() }).strict(),
 } satisfies Record<string, z.ZodType>
 
 export type AppInfo = { name: string; version: string; electron: string; node: string }
 export type Project = { id: string; path: string; name: string; addedAt: number }
 // Résultat d'un ajout par sélecteur : projets ajoutés et chemins refusés (avec la raison).
+export type Worktree = { path: string; branch: string | null; main: boolean }
 export type PickResult = { added: Project[]; rejected: { path: string; reason: string }[] }
 
 interface IpcResponses {
@@ -27,6 +36,10 @@ interface IpcResponses {
   'projects:add': Project
   'projects:remove': null
   'projects:pick': PickResult
+  'worktrees:list': Worktree[]
+  'worktrees:create': string
+  'worktrees:createFromIssue': string
+  'worktrees:remove': { removed: boolean; dirtyFiles: number }
   'settings:get': Settings
   'settings:set': null
 }
