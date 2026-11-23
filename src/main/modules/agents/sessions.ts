@@ -58,7 +58,11 @@ export function registerAgentHandlers(
 
   terminals.onExit((terminalId, exitCode) => {
     const sessionId = byTerminal.get(terminalId)
-    if (sessionId) apply(sessionId, { type: 'pty-exit', code: exitCode })
+    if (!sessionId) return
+    apply(sessionId, { type: 'pty-exit', code: exitCode })
+    // Processus fini : la session n'est plus « ouverte » et peut être reprise (--resume).
+    live.delete(sessionId)
+    byTerminal.delete(terminalId)
   })
 
   async function launch(
