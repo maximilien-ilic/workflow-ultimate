@@ -9,7 +9,10 @@ function setup() {
   const events: HostEvent[] = []
   const host = createHost((e) => events.push(e))
   const output = (id: string) =>
-    events.filter((e) => e.type === 'data' && e.id === id).map((e) => (e as { data: string }).data).join('')
+    events
+      .filter((e) => e.type === 'data' && e.id === id)
+      .map((e) => (e as { data: string }).data)
+      .join('')
   const waitFor = async (check: () => boolean, ms = 5000) => {
     const start = Date.now()
     while (!check()) {
@@ -27,6 +30,7 @@ describe('pty-host', () => {
     host.handle({ type: 'spawn', id: 't1', file: 'sh', args: ['-c', 'echo bonjour; exit 3'], ...base })
     await waitFor(() => events.some((e) => e.type === 'exit'))
     expect(output('t1')).toContain('bonjour')
+    expect(events[0]).toMatchObject({ type: 'spawned', id: 't1', pid: expect.any(Number) })
     expect(events.at(-1)).toMatchObject({ type: 'exit', id: 't1', exitCode: 3 })
   })
 
@@ -53,12 +57,30 @@ describe('pty-host', () => {
     host.handle({ type: 'spawn', id: 't1', file: 'sh', args: [], ...base })
     host.handle({ type: 'write', id: 'inconnu', data: 'x' })
     host.handle({ type: 'spawn', id: 't2', file: 'sh', args: [], ...base, cwd: '/nexiste/pas' })
-    const errors = events.filter((e) => e.type === 'error').map((e) => e.id)
-    expect(errors).toEqual(['t1', 'inconnu', 't2'])
+    const errors = events
+      .filter((e) => e.type === 'error')
+      .map((e) => [e.id, (e as { request: string }).request])
+    expect(errors).toEqual([
+      ['t1', 'spawn'],
+      ['inconnu', 'write'],
+      ['t2', 'spawn'],
+    ])
     host.handle({ type: 'kill', id: 't1' })
   })
 
-  it("une exception pendant une requête devient une erreur du terminal, le host continue", async () => {
+  it('pause suspend la sortie, resume la libère', async () => {
+    const { host, output, waitFor } = setup()
+    host.handle({ type: 'spawn', id: 't1', file: 'sh', args: [], ...base })
+    host.handle({ type: 'pause', id: 't1' })
+    host.handle({ type: 'write', id: 't1', data: 'echo apres-pause\n' })
+    await new Promise((r) => setTimeout(r, 300))
+    expect(output('t1')).not.toContain('apres-pause')
+    host.handle({ type: 'resume', id: 't1' })
+    await waitFor(() => output('t1').includes('apres-pause'))
+    host.handle({ type: 'kill', id: 't1' })
+  })
+
+  it('une exception pendant une requête devient une erreur du terminal, le host continue', async () => {
     const { host, events, output, waitFor } = setup()
     const locked = mkdtempSync(join(tmpdir(), 'wu-locked-'))
     chmodSync(locked, 0o000) // stat d'un sous-dossier → EACCES (exception, pas ENOENT)
