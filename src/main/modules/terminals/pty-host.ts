@@ -26,6 +26,8 @@ export function startPtyHost(entry = join(__dirname, 'pty-host.js')): PtyHost {
   const start = () => {
     child = utilityProcess.fork(entry, [], { serviceName: 'workflow-ultimate-pty-host' })
     child.on('message', (event: HostEvent) => events.emit('event', event))
+    // Erreur fatale signalée par Electron pour ce processus : on la journalise, l'arrêt suit sur 'exit'.
+    child.on('error', (type, location) => console.error(`pty-host : erreur fatale ${type} (${location})`))
     child.on('exit', (code) => {
       if (stopping) return
       if (!shouldRestart(crashes, Date.now())) {
