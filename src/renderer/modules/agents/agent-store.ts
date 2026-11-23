@@ -65,10 +65,13 @@ window.wu.onTerminalEvent((event) => {
 // rechargement) : le main fait foi. Une session sans ce terminal vivant est terminée.
 async function reconcile() {
   if (agents.size === 0) return
+  // Chaque mise à jour remplace l'objet : une entrée identique à celle du départ n'a rien reçu de plus récent
+  // pendant l'appel ; les autres gardent leur état, plus frais que la réponse.
+  const before = new Map(agents)
   const sessions = await window.wu.invoke('agents:list', {}).catch(() => [])
   for (const [terminalId, info] of agents) {
     const session = sessions.find((s) => s.id === info.sessionId)
-    if (!session) continue
+    if (!session || before.get(terminalId) !== info) continue
     agents.set(terminalId, { ...info, state: session.state, exited: session.terminalId !== terminalId })
   }
   changed()
