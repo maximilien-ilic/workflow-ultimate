@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
+import { AgentHeader } from '../agents/AgentHeader'
 import { agentStore, stateLabel } from '../agents/agent-store'
 import { paneIds } from './pane-tree'
 import type { PaneTree } from './pane-tree'
@@ -86,6 +87,9 @@ export function TerminalArea() {
       {/* Les onglets inactifs restent montés (masqués) : leurs terminaux continuent d'afficher la sortie. */}
       {tabs.map((tab) => (
         <div key={tab.id} role="tabpanel" className="terminal-tab" hidden={tab.id !== activeTab}>
+          {agentStore.get(tab.activePane) && (
+            <AgentHeader terminalId={tab.activePane} info={agentStore.get(tab.activePane)!} cwd={tab.cwd} />
+          )}
           <Panes tab={tab} tree={tab.tree} />
         </div>
       ))}
