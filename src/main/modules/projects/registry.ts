@@ -1,21 +1,11 @@
-import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { access, readdir, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { promisify } from 'node:util'
 import type { Project } from '../../../shared/ipc'
-import { gitEnv } from './git-env'
+import { runGit } from './git-env'
 
-const exec = promisify(execFile)
-
-const git = async (cwd: string, ...args: string[]) => {
-  const { stdout } = await exec('git', ['-C', cwd, ...args], {
-    timeout: 5000,
-    env: gitEnv(),
-  })
-  return stdout.endsWith('\n') ? stdout.slice(0, -1) : stdout // un seul chemin par appel : un \n dans un nom reste intact
-}
+const git = (cwd: string, ...args: string[]) => runGit(cwd, args, 5000)
 
 export type RepoInfo = { root: string; gitDir: string }
 
@@ -69,6 +59,12 @@ export function listProjects(db: DatabaseSync): Project[] {
   return (db.prepare('SELECT * FROM projects ORDER BY name COLLATE NOCASE, path').all() as Row[]).map(
     toProject,
   )
+}
+
+export function getProject(db: DatabaseSync, id: string): Project {
+  const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as Row | undefined
+  if (!row) throw new Error(`Projet ${id} inconnu`)
+  return toProject(row)
 }
 
 export function removeProject(db: DatabaseSync, id: string): void {

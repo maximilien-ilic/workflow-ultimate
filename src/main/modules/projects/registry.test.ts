@@ -35,7 +35,7 @@ describe('repoRoot', () => {
     await expect(repoRoot(join(repo, 'src/deep'))).resolves.toBe(repo)
   })
 
-  it("ramène un worktree lié au dépôt principal", async () => {
+  it('ramène un worktree lié au dépôt principal', async () => {
     const repo = makeRepo(join(dir, 'app'))
     git(repo, 'worktree', 'add', '-q', join(dir, 'app-feat'), '-b', 'feat')
     await expect(repoRoot(join(dir, 'app-feat'))).resolves.toBe(repo)
@@ -146,7 +146,7 @@ describe('scanForRepos', () => {
     expect(await scanForRepos(repo)).toEqual([repo])
   })
 
-  it("ne descend pas dans un dépôt (pas de sous-modules ni de dossiers internes)", async () => {
+  it('ne descend pas dans un dépôt (pas de sous-modules ni de dossiers internes)', async () => {
     const root = join(dir, 'projects')
     const a = makeRepo(join(root, 'a'))
     makeRepo(join(a, 'nested'))

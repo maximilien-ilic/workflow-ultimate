@@ -7,13 +7,19 @@ import { gitEnv } from './git-env'
 import { gitStatus } from './git-status'
 
 describe('gitEnv', () => {
-  it("retire les variables GIT_* héritées qui redirigent git vers un autre dépôt", () => {
-    const env = gitEnv({ PATH: '/bin', HOME: '/h', GIT_DIR: '/x/.git', GIT_WORK_TREE: '/x', GIT_INDEX_FILE: '/i' })
+  it('retire les variables GIT_* héritées qui redirigent git vers un autre dépôt', () => {
+    const env = gitEnv({
+      PATH: '/bin',
+      HOME: '/h',
+      GIT_DIR: '/x/.git',
+      GIT_WORK_TREE: '/x',
+      GIT_INDEX_FILE: '/i',
+    })
     expect(env).toEqual({ PATH: '/bin', HOME: '/h', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C' })
   })
 })
 
-describe("gitStatus avec un environnement git hérité", () => {
+describe('gitStatus avec un environnement git hérité', () => {
   let dir: string
   const saved = { ...process.env }
   beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'wu-git-env-'))))
