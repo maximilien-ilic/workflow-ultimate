@@ -35,7 +35,7 @@ export function createMainWindow(): BrowserWindow {
   })
   win.once('ready-to-show', () => win.show())
 
-  // shortcut: tout lien externe est bloqué ; ouvrir via shell.openExternal quand le module browser arrivera
+  // Toute nouvelle fenêtre est refusée ; les liens des terminaux passent par shell:openUrl (http/https)
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   const withoutHash = (u: string) => u.split('#')[0]
   const stayOnRenderer = (event: Electron.Event, target: string) => {

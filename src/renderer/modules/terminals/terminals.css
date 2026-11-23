@@ -1,0 +1,10 @@
+/* shortcut: style minimal, le style visuel est reporté à M5 */
+.terminal-area { display: flex; flex-direction: column; flex: 1; min-height: 320px; }
+.terminal-tab { display: flex; flex: 1; min-height: 0; }
+.terminal-tab[hidden] { display: none; }
+.terminal-split { display: flex; flex: 1; min-width: 0; min-height: 0; gap: 2px; }
+.terminal-split[data-dir='column'] { flex-direction: column; }
+.terminal-pane { position: relative; display: flex; flex: 1; min-width: 0; min-height: 120px; outline: 1px solid transparent; }
+.terminal-pane[data-active='true'] { outline-color: var(--accent, #3daee9); }
+.terminal-host { flex: 1; min-width: 0; min-height: 0; }
+.terminal-search { position: absolute; top: 4px; right: 4px; z-index: 2; }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppInfo } from '../shared/ipc'
 import { ProjectsPanel } from './modules/projects/ProjectsPanel'
+import { TerminalArea } from './modules/terminals/TerminalArea'
 
 export function App() {
   const [info, setInfo] = useState<AppInfo | null>(null)
@@ -17,6 +18,7 @@ export function App() {
         <p>{info ? `v${info.version} · Electron ${info.electron} · Node ${info.node}` : 'Chargement…'}</p>
       )}
       <ProjectsPanel />
+      <TerminalArea />
     </main>
   )
 }

@@ -23,6 +23,8 @@ export const ipcRequestSchemas = {
   'terminal:attach': z.object({ id: z.uuid() }).strict(),
   // Accusé de réception : nombre de caractères affichés par le renderer (contrôle de flux).
   'terminal:ack': z.object({ id: z.uuid(), chars: z.number().int().min(0).max(10_000_000) }).strict(),
+  // Lien cliqué dans un terminal : ouvert dans le navigateur du système, http(s) seulement.
+  'shell:openUrl': z.object({ url: z.url({ protocol: /^https?$/ }).max(4096) }).strict(),
 } satisfies Record<string, z.ZodType>
 
 export type AppInfo = { name: string; version: string; electron: string; node: string }
@@ -42,6 +44,7 @@ interface IpcResponses {
   'terminal:kill': null
   'terminal:attach': string
   'terminal:ack': null
+  'shell:openUrl': null
   'settings:get': Settings
   'settings:set': null
 }

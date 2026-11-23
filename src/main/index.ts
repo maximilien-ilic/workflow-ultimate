@@ -1,4 +1,4 @@
-import { app, dialog } from 'electron'
+import { app, dialog, shell } from 'electron'
 import { join } from 'node:path'
 import { dataDir, openDatabase } from './modules/shell/db'
 import { handle } from './modules/shell/ipc'
@@ -18,6 +18,12 @@ handle('app:info', () => ({
   electron: process.versions.electron,
   node: process.versions.node,
 }))
+
+// Le schéma n'accepte que http(s) : pas de file://, pas de schéma exotique lancé depuis un terminal.
+handle('shell:openUrl', async ({ url }) => {
+  await shell.openExternal(url)
+  return null
+})
 
 registerSettings()
 void app.whenReady().then(() => {
