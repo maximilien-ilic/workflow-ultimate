@@ -91,6 +91,7 @@ export function registerAgentHandlers(
           })
         : claudeArgs({ sessionId: id, resume, prompt: req.prompt, notify: opts.notify })
     const now = Date.now()
+    const before = resume ? row(id) : undefined // dernier état durable, restauré si le PTY refuse la reprise
     if (resume)
       db.prepare("UPDATE agent_sessions SET state = 'starting', updated_at = ? WHERE id = ?").run(now, id)
     else
@@ -115,7 +116,14 @@ export function registerAgentHandlers(
       live.delete(id)
       byTerminal.delete(req.terminalId)
       pendingCodexIds.delete(id)
-      db.prepare("UPDATE agent_sessions SET state = 'error', updated_at = ? WHERE id = ?").run(Date.now(), id)
+      // Aucun processus n'a démarré : une nouvelle session disparaît, une reprise retrouve son dernier état.
+      if (before)
+        db.prepare('UPDATE agent_sessions SET state = ?, updated_at = ? WHERE id = ?').run(
+          before.state,
+          before.updated_at,
+          id,
+        )
+      else db.prepare('DELETE FROM agent_sessions WHERE id = ?').run(id)
       throw error
     }
     return toSession(row(id)!)
