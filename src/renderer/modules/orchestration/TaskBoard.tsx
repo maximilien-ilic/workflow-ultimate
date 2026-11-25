@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { taskStatuses, type Task, type TaskStatus } from '../../../shared/ipc'
 import { registerCommand } from '../palette/commands'
+import './task-board.css'
 
 type Draft = Pick<Task, 'title' | 'body'>
 type Direction = -1 | 1
@@ -36,10 +37,18 @@ type CardProps = { task: Task; lastMove: Move | null; onMove: (direction: Direct
 
 function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
   const [editing, setEditing] = useState(false)
+  const [editorClosed, setEditorClosed] = useState(false)
+  const closeEditor = () => {
+    setEditing(false)
+    setEditorClosed(true)
+  }
   if (editing)
-    return <TaskEditor task={task} onCancel={() => setEditing(false)} onSave={(draft) => { setEditing(false); onSave(draft) }} />
-  // Le déplacement recrée la carte dans une autre colonne : on y remet le focus pour enchaîner au clavier.
-  const moved = lastMove?.id === task.id ? lastMove.direction : null
+    return <TaskEditor task={task} onCancel={closeEditor} onSave={(draft) => { closeEditor(); onSave(draft) }} />
+  // Déplacer ou fermer l'éditeur recrée les boutons : le focus y revient pour enchaîner au clavier,
+  // sur « Éditer » quand la carte atteint une colonne du bord.
+  const lastDirection = lastMove?.id === task.id ? lastMove.direction : null
+  const moved = lastDirection && neighbour(task.status, lastDirection) ? lastDirection : null
+  const focusEdit = editorClosed || (lastDirection !== null && moved === null)
   const moveButton = (direction: Direction) => {
     const target = neighbour(task.status, direction)
     if (!target) return null
@@ -55,7 +64,7 @@ function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
       <strong>{task.title}</strong>
       {task.body && <p>{task.body}</p>}
       {moveButton(-1)}
-      <button type="button" onClick={() => setEditing(true)} aria-label={`Éditer « ${task.title} »`}>Éditer</button>
+      <button type="button" autoFocus={focusEdit} onClick={() => setEditing(true)} aria-label={`Éditer « ${task.title} »`}>Éditer</button>
       {moveButton(1)}
     </li>
   )
@@ -115,7 +124,7 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
       {!projectId && <p>Aucun projet sélectionné.</p>}
       {projectId && <NewTaskForm onCreate={(draft) => apply(window.wu.invoke('tasks:create', { projectId, ...draft }))} />}
       {error && <p role="alert">{error}</p>}
-      {projectId && taskStatuses.map((status) => (
+      {projectId && <div className="task-board-columns">{taskStatuses.map((status) => (
         <section key={status} aria-label={columnTitles[status]}>
           <h3>{columnTitles[status]}</h3>
           <ul>
@@ -125,7 +134,7 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
             ))}
           </ul>
         </section>
-      ))}
+      ))}</div>}
       <button type="button" onClick={() => dialog.current?.close()}>Fermer</button>
     </dialog>
   )
