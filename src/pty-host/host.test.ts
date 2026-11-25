@@ -1,5 +1,5 @@
 import { chmodSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { constants, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { HostEvent } from '../shared/pty-protocol'
@@ -111,6 +111,36 @@ describe('pty-host', () => {
     host.handle({ type: 'spawn', id: 't1', file: 'sh', args: ['-c', 'true'], ...base })
     await waitFor(() => events.some((e) => e.type === 'exit'))
     host.handle({ type: 'kill', id: 't1' })
+    expect(events.at(-1)).toEqual({ type: 'closed', id: 't1' })
+  })
+
+  it('confirme la fermeture d’un lancement expiré dont le PTY est absent', () => {
+    const { host, events } = setup()
+    const request = { type: 'kill', id: 'absent', expiredSpawn: true } as const
+    host.handle(request)
+    expect(events).toEqual([{ type: 'closed', id: 'absent' }])
+  })
+
+  it('tue un lancement expiré qui ignore SIGHUP avant de confirmer sa fermeture', async () => {
+    const { host, events, output, waitFor } = setup()
+    host.handle({
+      type: 'spawn',
+      id: 't1',
+      file: process.execPath,
+      args: [
+        '-e',
+        `process.on('SIGHUP', () => {})
+        console.log('prêt')
+        const fixtureLifetimeMs = 2000
+        setTimeout(() => { process.exitCode = 1 }, fixtureLifetimeMs)`,
+      ],
+      ...base,
+    })
+    await waitFor(() => output('t1').includes('prêt'))
+    const request = { type: 'kill', id: 't1', expiredSpawn: true } as const
+    host.handle(request)
+    await waitFor(() => events.some((event) => event.type === 'closed'))
+    expect(events).toContainEqual({ type: 'exit', id: 't1', exitCode: 0, signal: constants.signals.SIGKILL })
     expect(events.at(-1)).toEqual({ type: 'closed', id: 't1' })
   })
 
