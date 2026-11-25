@@ -3,6 +3,7 @@ import type { ChangedFile } from '../../../shared/ipc'
 import { agentStore, startAgent } from '../agents/agent-store'
 import { registerCommand } from '../palette/commands'
 import { CommitForm } from './CommitForm'
+import { ReviewComments } from './ReviewComments'
 import { terminalStore } from '../terminals/terminal-store'
 import './review.css'
 
@@ -91,6 +92,7 @@ export function ReviewView() {
   const inlineRef = useRef(inline)
   const [message, setMessage] = useState('')
   const [fileMessage, setFileMessage] = useState('')
+  const [anchor, setAnchor] = useState<{ file: ChangedFile; line: number; maxLine: number }>()
 
   const [excluded, setExcluded] = useState<Set<string>>(new Set()) // fichiers décochés pour le commit
 
@@ -172,6 +174,7 @@ export function ReviewView() {
   useLayoutEffect(() => {
     if (!target || !file || !host.current) return
     let cancelled = false
+    let cursorListener: { dispose(): void } | undefined
     const container = host.current
     const request = opening.current
     const stillSelected = () => !cancelled && request === opening.current && dialog.current?.open
@@ -189,6 +192,12 @@ export function ReviewView() {
       if (!versions.binary) {
         editor.current ??= createDiffEditor(monaco, container, inlineRef.current)
         showVersions(monaco, editor.current, file.path, versions)
+        const side = file.status === 'deleted' ? editor.current.getOriginalEditor() : editor.current.getModifiedEditor()
+        const maxLine = side.getModel()?.getLineCount() ?? 1
+        setAnchor({ file, line: 1, maxLine })
+        cursorListener = side.onDidChangeCursorPosition(({ position }) => {
+          setAnchor({ file, line: position.lineNumber, maxLine })
+        })
       }
       setFileMessage(versions.binary ? MESSAGE_BINARY : '')
     })().catch((e: unknown) => {
@@ -196,6 +205,7 @@ export function ReviewView() {
     })
     return () => {
       cancelled = true
+      cursorListener?.dispose()
       if (editor.current) clearVersions(editor.current)
     }
   }, [target, file])
@@ -210,6 +220,7 @@ export function ReviewView() {
 
   const count = target?.files.length ?? 0
   const fileStatus = file && fileMessage
+  const activeAnchor = anchor?.file === file ? anchor : undefined
   return (
     <dialog
       ref={dialog}
@@ -217,6 +228,7 @@ export function ReviewView() {
       aria-label="Diff du worktree"
       onKeyDown={(e) => {
         if (!e.altKey || count === 0) return
+        if (e.target instanceof Element && e.target.closest('.review-comments')) return
         if (e.key === 'ArrowDown') setSelected((i) => (i + 1) % count)
         else if (e.key === 'ArrowUp') setSelected((i) => (i - 1 + count) % count)
         else return
@@ -267,6 +279,16 @@ export function ReviewView() {
         </ul>
         <div ref={host} className="review-editor" />
       </div>
+      {target && (
+        <ReviewComments
+          key={target.request}
+          projectId={target.projectId}
+          worktreePath={target.worktreePath}
+          filePath={file?.path}
+          line={activeAnchor?.line ?? 1}
+          maxLine={activeAnchor?.maxLine}
+        />
+      )}
       {target && (
         <CommitForm
           projectId={target.projectId}

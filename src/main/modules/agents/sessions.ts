@@ -17,6 +17,7 @@ export type AgentSessions = {
   // Pour le socket : seule une session lancée dans cette exécution accepte des événements.
   sessionAgent(sessionId: string): AgentKind | undefined
   onSocketEvent(event: AgentSocketEvent): void
+  writeReview(sessionId: string, cwd: string, owner: WebContents, message: string): Promise<void>
 }
 
 export function registerAgentHandlers(
@@ -146,6 +147,13 @@ export function registerAgentHandlers(
   )
 
   return {
+    async writeReview(sessionId, cwd, owner, message) {
+      const session = live.get(sessionId)
+      const saved = row(sessionId)
+      if (!session || session.owner !== owner || saved?.cwd !== cwd || saved.state !== 'done')
+        throw new Error('Le message doit être envoyé à un agent disponible dans ce worktree.')
+      await terminals.writeConfirmed(session.terminalId, owner, message)
+    },
     sessionAgent: (id) => (pendingCodexIds.has(id) ? 'codex' : live.has(id) ? row(id)?.agent : undefined),
     onSocketEvent({ agent, sessionId, event, externalId }) {
       if (

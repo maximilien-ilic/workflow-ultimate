@@ -35,3 +35,15 @@
 }
 .commit-form { display: flex; gap: 8px; align-items: flex-start; padding-top: 8px; }
 .commit-form textarea { flex: 1; min-height: 3em; }
+
+.review-comments {
+  max-height: 34%;
+  overflow: auto;
+  margin-block-start: 8px;
+  border-top: 1px solid var(--border, #8888);
+}
+.review-comments h3 { margin: 4px 0; }
+.review-comments form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.review-comments label { display: inline-flex; gap: 4px; align-items: center; }
+.review-comments input[type='number'] { width: 6ch; }
+.review-comments ul { overflow-wrap: anywhere; }

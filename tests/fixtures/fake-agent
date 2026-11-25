@@ -8,8 +8,8 @@ case "${1:-}" in
   *) scenario=${1:-success}; agent=${2:-claude-code} ;;
 esac
 case "$scenario" in
-  success|error|question) ;;
-  *) printf '%s\n' 'Scénario attendu : success, error ou question' >&2; exit 2 ;;
+  success|error|question|review) ;;
+  *) printf '%s\n' 'Scénario attendu : success, error, question ou review' >&2; exit 2 ;;
 esac
 case "$agent" in
   claude-code|codex) ;;
@@ -31,6 +31,22 @@ case "$scenario" in
     printf '%s\n' 'Erreur simulée' >&2
     notify error
     exit 1
+    ;;
+  review)
+    notify turn-finished
+    exec node -e '
+      const fs = require("node:fs")
+      let input = ""
+      process.stdin.setRawMode(true)
+      process.stdin.setEncoding("utf8")
+      process.stdin.on("data", (data) => {
+        input += data
+        if (input.endsWith("\x1b[201~\r")) {
+          fs.writeFileSync(process.env.FAKE_AGENT_REVIEW_CAPTURE, input)
+          process.exit(0)
+        }
+      })
+    '
     ;;
   question)
     printf '%s\n' 'Continuer ?'

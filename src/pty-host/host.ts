@@ -25,7 +25,10 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
   }
   // Chaque erreur dit quelle requête l'a causée : le main ne fait échouer que l'attente correspondante.
   const error = (req: HostRequest, message: string) =>
-    send({ type: 'error', id: req.id, request: req.type, message })
+    send({
+      type: 'error', id: req.id, request: req.type, message,
+      ...(req.type === 'write' && req.receipt ? { receipt: req.receipt } : {}),
+    })
 
   function spawnTerminal(req: Extract<HostRequest, { type: 'spawn' }>): void {
     if (terminals.has(req.id)) return error(req, `Terminal « ${req.id} » déjà ouvert`)
@@ -110,8 +113,10 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
       case 'write':
       case 'resize':
         if (term.exited) return error(req, `Terminal « ${req.id} » déjà terminé`)
-        if (req.type === 'write') term.pty.write(req.data)
-        else term.pty.resize(req.cols, req.rows)
+        if (req.type === 'write') {
+          term.pty.write(req.data)
+          if (req.receipt) send({ type: 'written', id: req.id, receipt: req.receipt })
+        } else term.pty.resize(req.cols, req.rows)
     }
   }
 

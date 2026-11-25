@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
 import type { HostEvent } from '../../../shared/pty-protocol'
 import type { TerminalEvent } from '../../../shared/ipc'
@@ -36,6 +37,7 @@ export type SpawnSpec = {
 // Lancement d'un processus dans un terminal (shell ou agent) ; `onExit` permet aux agents de suivre la fin.
 export type Terminals = {
   spawn(spec: SpawnSpec): Promise<number>
+  writeConfirmed(id: string, owner: WebContents, data: string): Promise<void>
   onExit(listener: (id: string, exitCode: number) => void): void
 }
 
@@ -47,6 +49,7 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
   const flow = new FlowControl()
   const replays = new Pending<{ data: string; offset: number }>()
   const spawns = new Pending<number>()
+  const writes = new Pending<void>()
 
   const sendTo = (id: string, event: TerminalEvent) => {
     const owner = owners.get(id)
@@ -54,6 +57,8 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
   }
 
   host.events.on('event', (event: HostEvent) => {
+    if (event.type === 'written') return writes.settle(event.receipt, undefined)
+    if (event.type === 'error' && event.receipt) return writes.fail(event.receipt, new Error(event.message))
     if (event.type === 'replay') return replays.settle(event.id, { data: event.data, offset: event.offset })
     if (event.type === 'spawned') return spawns.settle(event.id, event.pid)
     // Seule l'attente qui correspond à la requête en erreur échoue (une écriture ratée ne casse pas un rejeu).
@@ -80,6 +85,7 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
     const lost = new Error(reason)
     spawns.failAll(lost)
     replays.failAll(lost)
+    writes.failAll(lost)
     for (const owner of new Set(owners.values()))
       if (!owner.isDestroyed())
         owner.send('terminal:event', { type: 'host-restarted' } satisfies TerminalEvent)
@@ -99,6 +105,18 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
 
   const owned = (id: string, sender: WebContents) => {
     if (owners.get(id) !== sender) throw new Error(`Terminal ${id} inconnu`)
+  }
+
+  function writeConfirmed(id: string, owner: WebContents, data: string): Promise<void> {
+    owned(id, owner)
+    const receipt = randomUUID()
+    const written = writes.wait(receipt, 5000)
+    try {
+      host.send({ type: 'write', id, data, receipt })
+    } catch (cause) {
+      writes.fail(receipt, new Error(`Écriture PTY impossible : ${String(cause)}`))
+    }
+    return written
   }
 
   async function spawn({ id, owner, ...process }: SpawnSpec): Promise<number> {
@@ -160,5 +178,5 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
     return replay
   })
 
-  return { spawn, onExit: (listener) => void exitListeners.push(listener) }
+  return { spawn, writeConfirmed, onExit: (listener) => void exitListeners.push(listener) }
 }

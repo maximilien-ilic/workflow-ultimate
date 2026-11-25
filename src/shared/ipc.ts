@@ -72,6 +72,15 @@ export const ipcRequestSchemas = {
     .strict(),
   'review:push': z.object({ projectId: z.uuid(), worktreePath: absolutePath }).strict(),
   'review:pr': z.object({ projectId: z.uuid(), worktreePath: absolutePath }).strict(),
+  'review:comments': z.object({ projectId: z.uuid(), worktreePath: absolutePath }).strict(),
+  'review:addComment': z.object({
+    projectId: z.uuid(), worktreePath: absolutePath,
+    path: z.string().min(1).max(4096), line: z.number().int().positive(),
+    body: z.string().trim().min(1).max(4000),
+  }).strict(),
+  'review:sendComments': z.object({
+    projectId: z.uuid(), worktreePath: absolutePath, sessionId: z.uuid(),
+  }).strict(),
   'review:createPr': z.object({
     projectId: z.uuid(),
     worktreePath: absolutePath,
@@ -95,6 +104,7 @@ export const ipcRequestSchemas = {
     .strict(),
 } satisfies Record<string, z.ZodType>
 
+export type ReviewComment = { id: number; path: string; line: number; body: string; sentAt: number | null }
 export type PullRequestCheck = { name: string; bucket: 'pass' | 'fail' | 'pending' | 'skipping' | 'cancel' }
 export type PullRequestContext =
   | { kind: 'unavailable'; message: string }
@@ -174,6 +184,9 @@ interface IpcResponses {
   'review:commit': { sha: string }
   'review:push': { output: string }
   'review:pr': PullRequestContext
+  'review:comments': ReviewComment[]
+  'review:addComment': ReviewComment[]
+  'review:sendComments': ReviewComment[]
   'review:createPr': { url: string }
   'diagnostics:report': string
   'settings:get': Settings
