@@ -47,10 +47,14 @@ describe('pont des terminaux', () => {
     expect(sent.at(-1)).toEqual({ type: 'pause', id })
     await vi.advanceTimersByTimeAsync(5001)
     await first
-    expect(sent.at(-1)).toEqual({ type: 'kill', id })
+    expect(sent.at(-1)).toEqual({ type: 'kill', id, expiredSpawn: true })
 
     // Relancer tout de suite le même id : refusé, sinon la confirmation tardive du premier le validerait.
     await expect(create()).rejects.toThrow(/fermeture/)
+    emit({ type: 'error', id, request: 'kill', message: 'Le signal a échoué' })
+    const stillReserved = create().catch((error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(5001)
+    await expect(stillReserved).resolves.toMatchObject({ message: expect.stringMatching(/fermeture/) })
     emit({ type: 'spawned', id, pid: 1 }) // confirmation tardive du premier lancement : ignorée
     emit({ type: 'closed', id })
 

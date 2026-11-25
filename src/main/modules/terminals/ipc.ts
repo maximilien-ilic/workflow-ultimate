@@ -77,8 +77,6 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
       flow.forget(event.id)
       return
     }
-    if (event.type === 'error' && event.request === 'kill' && releasing.delete(event.id))
-      flow.forget(event.id)
     if (!owners.has(event.id)) return
     if (event.type === 'data' && flow.onData(event.id, event.data.length) === 'pause')
       host.send({ type: 'pause', id: event.id })
@@ -131,7 +129,7 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
         // Le pty-host a pu lancer le PTY sans répondre à temps : on le ferme, et l'id reste réservé
         // jusqu'à la confirmation, pour qu'une relance ne récupère pas la réponse tardive du premier.
         releasing.add(id)
-        host.send({ type: 'kill', id })
+        host.send({ type: 'kill', id, expiredSpawn: true })
       }
       throw error
     } finally {

@@ -14,7 +14,7 @@ export type HostRequest =
   | { type: 'write'; id: string; data: string }
   | { type: 'resize'; id: string; cols: number; rows: number }
   // Ferme le terminal : termine le processus s'il tourne, puis libère son tampon dès sa fin.
-  | { type: 'kill'; id: string }
+  | { type: 'kill'; id: string; expiredSpawn?: true }
   | { type: 'replay'; id: string }
   // Contrôle de flux : le main suspend la lecture du PTY tant que le renderer n'a pas rattrapé son retard.
   | { type: 'pause'; id: string }
@@ -29,5 +29,5 @@ export type HostEvent =
   // Les derniers caractères (au plus la taille du tampon), jusqu'à `offset` inclus.
   | { type: 'replay'; id: string; data: string; offset: number }
   | { type: 'error'; id: string; request: HostRequest['type']; message: string }
-  // Terminal fermé par kill et oublié par le pty-host : le main peut l'oublier aussi.
+  // Le pty-host confirme que ce terminal est absent, après fermeture ou échec du lancement.
   | { type: 'closed'; id: string }
