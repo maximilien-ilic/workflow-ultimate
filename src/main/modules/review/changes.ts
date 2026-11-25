@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
-import { lstat, readFile, readlink } from 'node:fs/promises'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { constants } from 'node:fs'
+import { lstat, open, readlink } from 'node:fs/promises'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { gitEnv, runGit } from '../projects/git-env'
 
@@ -36,19 +37,16 @@ export function parseNameStatus(raw: string): ChangedFile[] {
 
 // Branche de base : celle de origin/HEAD si elle existe, sinon main, sinon master.
 async function baseBranch(repo: string): Promise<string> {
-  const remoteHead = await runGit(repo, [
-    'symbolic-ref',
-    '--quiet',
-    '--short',
-    'refs/remotes/origin/HEAD',
-  ]).catch(() => '')
-  const candidates = [remoteHead.replace(/^origin\//, ''), 'main', 'master'].filter(Boolean)
-  for (const name of candidates) {
-    const exists = await runGit(repo, ['rev-parse', '--verify', '--quiet', `refs/heads/${name}`]).then(
+  const remoteHead = await runGit(repo, ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']).catch(
+    () => '',
+  )
+  const candidates = [remoteHead, 'refs/heads/main', 'refs/heads/master'].filter(Boolean)
+  for (const ref of candidates) {
+    const exists = await runGit(repo, ['rev-parse', '--verify', '--quiet', ref]).then(
       () => true,
       () => false,
     )
-    if (exists) return name
+    if (exists) return ref
   }
   throw new Error('Branche de base introuvable (ni origin/HEAD, ni main, ni master)')
 }
@@ -57,14 +55,21 @@ async function baseBranch(repo: string): Promise<string> {
 export async function changedFiles(
   repo: string,
 ): Promise<{ base: string; mergeBase: string; files: ChangedFile[] }> {
-  const base = await baseBranch(repo)
-  const mergeBase = await runGit(repo, ['merge-base', 'HEAD', base])
+  const baseRef = await baseBranch(repo)
+  const mergeBase = await runGit(repo, ['merge-base', 'HEAD', baseRef])
+  const base = baseRef.replace(/^refs\/(heads|remotes)\//, '')
   const tracked = parseNameStatus(await runGit(repo, ['diff', '--name-status', '-z', '-M', mergeBase, '--']))
+  const byPath = new Map(tracked.map((file) => [file.path, file]))
   const untracked = (await runGit(repo, ['ls-files', '--others', '--exclude-standard', '-z']))
     .split('\0')
     .filter(Boolean)
-    .map((path): ChangedFile => ({ status: 'added', path }))
-  const files = [...tracked, ...untracked].sort((a, b) => a.path.localeCompare(b.path))
+  for (const path of untracked) {
+    const trackedFile = byPath.get(path)
+    if (!trackedFile || trackedFile.status === 'deleted') {
+      byPath.set(path, { status: trackedFile ? 'modified' : 'added', path })
+    }
+  }
+  const files = [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path))
   return { base, mergeBase, files }
 }
 
@@ -73,9 +78,9 @@ const MAX_BYTES = 2 * 1024 * 1024
 function insideWorktree(repo: string, path: string): string {
   const full = resolve(repo, path)
   const rel = relative(repo, full)
-  if (isAbsolute(path) || rel.startsWith('..') || isAbsolute(rel))
+  if (!rel || isAbsolute(path) || rel === '..' || rel.startsWith(`..${sep}`) || rel.split(sep).includes('.git'))
     throw new Error(`${path} : chemin hors du worktree`)
-  return full
+  return rel
 }
 
 const looksBinary = (b: Buffer) => b.length > MAX_BYTES || b.subarray(0, 8000).includes(0)
@@ -103,11 +108,46 @@ async function readBefore(repo: string, mergeBase: string, path: string): Promis
 
 // Version du dossier de travail. Un lien symbolique est versionné comme sa cible : on montre la cible,
 // sans jamais la suivre (elle pourrait pointer hors du worktree).
-async function readAfter(fullPath: string): Promise<Buffer> {
-  const info = await lstat(fullPath)
-  if (info.isSymbolicLink()) return Buffer.from(await readlink(fullPath))
-  if (info.size > MAX_BYTES) return TOO_LARGE
-  return readFile(fullPath)
+async function readAfter(repo: string, path: string): Promise<Buffer> {
+  const parts = path.split(sep)
+  const name = parts.pop()
+  const directoryFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
+  let parent = await open(repo, directoryFlags)
+  try {
+    // Sous Linux, /proc/self/fd ancre chaque ouverture dans un dossier déjà ouvert.
+    // Un renommage ou un symlink substitué pendant le parcours ne redirige pas la lecture.
+    for (const part of parts) {
+      const next = await open(`/proc/self/fd/${parent.fd}/${part}`, directoryFlags).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOTDIR' || error.code === 'ELOOP')
+          throw new Error(`${path} : chemin hors du worktree`, { cause: error })
+        throw error
+      })
+      const previous = parent
+      parent = next
+      await previous.close()
+    }
+    const fullPath = `/proc/self/fd/${parent.fd}/${name}`
+    const info = await lstat(fullPath)
+    if (info.isSymbolicLink()) return Buffer.from(await readlink(fullPath))
+    if (!info.isFile() || info.size > MAX_BYTES) return TOO_LARGE
+
+    const file = await open(fullPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    try {
+      if (!(await file.stat()).isFile()) return TOO_LARGE
+      const buffer = Buffer.alloc(MAX_BYTES + 1)
+      let offset = 0
+      while (offset < buffer.length) {
+        const { bytesRead } = await file.read(buffer, offset, buffer.length - offset, offset)
+        if (bytesRead === 0) break
+        offset += bytesRead
+      }
+      return buffer.subarray(0, offset)
+    } finally {
+      await file.close()
+    }
+  } finally {
+    await parent.close()
+  }
 }
 
 export async function fileVersions(
@@ -119,7 +159,7 @@ export async function fileVersions(
   const beforePath = file.oldPath ?? file.path
   insideWorktree(repo, beforePath) // refuse aussi un ancien chemin qui sortirait du worktree
   const before = file.status === 'added' ? Buffer.alloc(0) : await readBefore(repo, mergeBase, beforePath)
-  const after = file.status === 'deleted' ? Buffer.alloc(0) : await readAfter(afterPath)
+  const after = file.status === 'deleted' ? Buffer.alloc(0) : await readAfter(repo, afterPath)
   // Binaire ou trop gros : rien n'est envoyé à l'éditeur de diff.
   if (looksBinary(before) || looksBinary(after)) return NO_DIFF
   return { binary: false, before: before.toString('utf8'), after: after.toString('utf8') }

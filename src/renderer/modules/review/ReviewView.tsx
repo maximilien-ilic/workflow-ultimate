@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ChangedFile } from '../../../shared/ipc'
 import { registerCommand } from '../palette/commands'
 import { terminalStore } from '../terminals/terminal-store'
@@ -45,7 +45,13 @@ function languageOf(monaco: Monaco, path: string): string | undefined {
     .find((language: { extensions?: string[] }) => language.extensions?.some((ext) => path.endsWith(ext)))?.id
 }
 
-// Remplace les deux versions affichées et libère les anciennes (Monaco ne les libère pas seul).
+function clearVersions(diff: import('monaco-editor').editor.IStandaloneDiffEditor) {
+  const model = diff.getModel()
+  diff.setModel(null)
+  model?.original.dispose()
+  model?.modified.dispose()
+}
+
 function showVersions(
   monaco: Monaco,
   diff: import('monaco-editor').editor.IStandaloneDiffEditor,
@@ -53,13 +59,10 @@ function showVersions(
   versions: { before: string; after: string },
 ) {
   const language = languageOf(monaco, path)
-  const previous = diff.getModel()
   diff.setModel({
     original: monaco.editor.createModel(versions.before, language),
     modified: monaco.editor.createModel(versions.after, language),
   })
-  previous?.original.dispose()
-  previous?.modified.dispose()
 }
 
 // Worktree du terminal actif : celui dont le chemin est le dossier courant de l'onglet.
@@ -67,7 +70,7 @@ async function activeWorktree(): Promise<{ projectId: string; worktreePath: stri
   const cwd = terminalStore.activeCwd()
   if (!cwd) return null
   for (const project of await window.wu.invoke('projects:list', {})) {
-    const worktrees = await window.wu.invoke('worktrees:list', { projectId: project.id })
+    const worktrees = await window.wu.invoke('worktrees:list', { projectId: project.id }).catch(() => [])
     if (worktrees.some((w) => w.path === cwd)) return { projectId: project.id, worktreePath: cwd }
   }
   return null
@@ -78,30 +81,37 @@ export function ReviewView() {
   const dialog = useRef<HTMLDialogElement>(null)
   const host = useRef<HTMLDivElement>(null)
   const editor = useRef<import('monaco-editor').editor.IStandaloneDiffEditor | null>(null)
-  const monacoRef = useRef<Monaco | null>(null)
+  const opening = useRef(0)
   const [target, setTarget] = useState<Target | null>(null)
   const [selected, setSelected] = useState(0)
   const [inline, setInline] = useState(false)
+  const inlineRef = useRef(inline)
   const [message, setMessage] = useState('')
+  const [fileMessage, setFileMessage] = useState('')
 
   const open = useCallback(async () => {
+    const request = ++opening.current
+    const modal = dialog.current
+    if (!modal) return
+    if (!modal.open) modal.showModal()
+    setTarget(null)
     setMessage('')
-    const wt = await activeWorktree()
-    if (!wt) {
-      setTarget(null)
-      setMessage(MESSAGE_NO_WORKTREE)
-      dialog.current?.showModal()
-      return
-    }
+    setFileMessage('')
     try {
+      const wt = await activeWorktree()
+      if (request !== opening.current || !modal.open) return
+      if (!wt) {
+        setMessage(MESSAGE_NO_WORKTREE)
+        return
+      }
       const changes = await window.wu.invoke('review:changes', wt)
+      if (request !== opening.current || !modal.open) return
       setTarget({ ...wt, ...changes })
       setSelected(0)
       if (changes.files.length === 0) setMessage(`Aucun changement par rapport à ${changes.base}.`)
     } catch (e) {
-      setMessage(String(e))
+      if (request === opening.current && modal.open) setMessage(String(e))
     }
-    dialog.current?.showModal()
   }, [])
 
   useEffect(
@@ -117,31 +127,52 @@ export function ReviewView() {
 
   // Affiche le fichier sélectionné (Monaco chargé à la première ouverture seulement).
   const file = target?.files[selected]
-  useEffect(() => {
+  useLayoutEffect(() => {
+    inlineRef.current = inline
+    editor.current?.updateOptions({ renderSideBySide: !inline })
+  }, [inline])
+
+  useLayoutEffect(() => {
     if (!target || !file || !host.current) return
     let cancelled = false
     const container = host.current
+    const request = opening.current
+    const stillSelected = () => !cancelled && request === opening.current && dialog.current?.open
     void (async () => {
-      const monaco = (monacoRef.current ??= (await import('./monaco')).monaco)
-      const versions = await window.wu.invoke('review:file', {
-        projectId: target.projectId,
-        worktreePath: target.worktreePath,
-        mergeBase: target.mergeBase,
-        file,
-      })
-      if (cancelled) return
-      editor.current ??= createDiffEditor(monaco, container, inline)
-      showVersions(monaco, editor.current, file.path, versions)
-      setMessage(versions.binary ? MESSAGE_BINARY : '')
-    })().catch((e: unknown) => setMessage(String(e)))
+      const [{ monaco }, versions] = await Promise.all([
+        import('./monaco'),
+        window.wu.invoke('review:file', {
+          projectId: target.projectId,
+          worktreePath: target.worktreePath,
+          mergeBase: target.mergeBase,
+          file,
+        }),
+      ])
+      if (!stillSelected()) return
+      if (!versions.binary) {
+        editor.current ??= createDiffEditor(monaco, container, inlineRef.current)
+        showVersions(monaco, editor.current, file.path, versions)
+      }
+      setFileMessage(versions.binary ? MESSAGE_BINARY : '')
+    })().catch((e: unknown) => {
+      if (stillSelected()) setFileMessage(String(e))
+    })
     return () => {
       cancelled = true
+      if (editor.current) clearVersions(editor.current)
     }
-  }, [target, file, inline])
+  }, [target, file])
 
-  useEffect(() => editor.current?.updateOptions({ renderSideBySide: !inline }), [inline])
+  useLayoutEffect(() => () => {
+    if (editor.current) {
+      clearVersions(editor.current)
+      editor.current.dispose()
+      editor.current = null
+    }
+  }, [])
 
   const count = target?.files.length ?? 0
+  const fileStatus = file && fileMessage
   return (
     <dialog
       ref={dialog}
@@ -152,14 +183,19 @@ export function ReviewView() {
         if (e.key === 'ArrowDown') setSelected((i) => (i + 1) % count)
         else if (e.key === 'ArrowUp') setSelected((i) => (i - 1 + count) % count)
         else return
+        if (count > 1) setFileMessage('')
         e.preventDefault()
       }}
-      onClose={() => {
-        const model = editor.current?.getModel()
-        editor.current?.dispose()
-        model?.original.dispose()
-        model?.modified.dispose()
-        editor.current = null
+      onClose={(event) => {
+        if (event.currentTarget.open) return
+        opening.current++
+        setTarget(null)
+        setFileMessage('')
+        if (editor.current) {
+          clearVersions(editor.current)
+          editor.current.dispose()
+          editor.current = null
+        }
       }}
     >
       <header>
@@ -167,14 +203,17 @@ export function ReviewView() {
         <button onClick={() => setInline((v) => !v)}>{inline ? 'Côte à côte' : 'En ligne'}</button>
         <button onClick={() => dialog.current?.close()}>Fermer</button>
       </header>
-      {message && <p role="status">{message}</p>}
+      {(message || fileStatus) && <p role="status">{message || fileStatus}</p>}
       <div className="review-body">
         <ul aria-label="Fichiers modifiés">
           {target?.files.map((f, i) => (
             <li key={f.path}>
               <button
                 aria-current={i === selected}
-                onClick={() => setSelected(i)}
+                onClick={() => {
+                  if (i !== selected) setFileMessage('')
+                  setSelected(i)
+                }}
                 title={statusText[f.status]}
               >
                 <span aria-hidden="true">{statusLetter[f.status]}</span> {f.oldPath ? `${f.oldPath} → ` : ''}
