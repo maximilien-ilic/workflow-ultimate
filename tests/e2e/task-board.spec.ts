@@ -33,13 +33,22 @@ test('les colonnes sont côte à côte et le focus reste sur la carte', async ()
     expect(done!.x).toBeGreaterThan(todo!.x)
 
     const edit = board.getByRole('button', { name: 'Éditer « Carte »' })
-    await edit.focus()
-    await page.keyboard.press('Enter')
-    await board.getByRole('button', { name: 'Annuler' }).focus()
-    await page.keyboard.press('Enter')
-    await expect(edit).toBeFocused()
+    const editThenCancel = async () => {
+      await edit.focus()
+      await page.keyboard.press('Enter')
+      await board.getByRole('button', { name: 'Annuler' }).focus()
+      await page.keyboard.press('Enter')
+      await expect(edit).toBeFocused()
+    }
+    await editThenCancel()
 
-    for (const target of ['En cours', 'En revue', 'Fini']) {
+    // Après un déplacement vers une colonne intermédiaire, fermer l'éditeur rend aussi le focus à « Éditer ».
+    await board.getByRole('button', { name: 'Déplacer « Carte » vers En cours' }).focus()
+    await page.keyboard.press('Enter')
+    await expect(column('En cours')).toContainText('Carte')
+    await editThenCancel()
+
+    for (const target of ['En revue', 'Fini']) {
       await board.getByRole('button', { name: `Déplacer « Carte » vers ${target}` }).focus()
       await page.keyboard.press('Enter')
       await expect(column(target)).toContainText('Carte')

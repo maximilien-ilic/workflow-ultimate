@@ -44,10 +44,10 @@ function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
   }
   if (editing)
     return <TaskEditor task={task} onCancel={closeEditor} onSave={(draft) => { closeEditor(); onSave(draft) }} />
-  // Déplacer ou fermer l'éditeur recrée les boutons : le focus y revient pour enchaîner au clavier,
-  // sur « Éditer » quand la carte atteint une colonne du bord.
+  // Déplacer ou fermer l'éditeur recrée les boutons : un seul reçoit le focus pour enchaîner au clavier.
+  // Fermer l'éditeur l'emporte ; une carte arrivée dans une colonne du bord le rend aussi à « Éditer ».
   const lastDirection = lastMove?.id === task.id ? lastMove.direction : null
-  const moved = lastDirection && neighbour(task.status, lastDirection) ? lastDirection : null
+  const moved = !editorClosed && lastDirection && neighbour(task.status, lastDirection) ? lastDirection : null
   const focusEdit = editorClosed || (lastDirection !== null && moved === null)
   const moveButton = (direction: Direction) => {
     const target = neighbour(task.status, direction)
