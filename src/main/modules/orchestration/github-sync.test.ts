@@ -27,7 +27,9 @@ page=$(echo "$@" | sed -n 's/.*[?&]page=\\([0-9]*\\).*/\\1/p')
 cat "$dir/page-$page.json" 2>/dev/null || echo '{"count":0,"issues":[]}'
 `
 const calls = () => readFileSync(join(repo, 'args'), 'utf8').trimEnd().split('\n')
-const setSource = (nameWithOwner: string) => writeFileSync(join(repo, 'repo.json'), JSON.stringify({ nameWithOwner }))
+const setSource = (nameWithOwner: string, host = 'github.com') =>
+  writeFileSync(join(repo, 'repo.json'), JSON.stringify({ nameWithOwner, url: `https://${host}/${nameWithOwner}` }))
+const boundSource = () => db.prepare('SELECT github_repo FROM projects WHERE id = ?').get(PROJECT)?.github_repo
 const setPage = (page: number, content: unknown) => writeFileSync(join(repo, `page-${page}.json`), JSON.stringify(content))
 const issue = (number: number, state: 'open' | 'closed', title = `Issue ${number}`, body = '') => ({
   number, title, body, state, url: `https://github.com/${SOURCE}/issues/${number}`,
@@ -55,7 +57,7 @@ afterEach(() => {
 it('importe les issues de la source du projet, ouvertes en « À faire » et fermées en « Fini »', async () => {
   await syncIssues(db, PROJECT)
   const [view, api] = calls()
-  expect(view).toBe('repo view --json nameWithOwner')
+  expect(view).toBe('repo view --json nameWithOwner,url')
   expect(api).toMatch(`api --hostname github.com repos/${SOURCE}/issues?state=all&per_page=${ISSUES_PER_PAGE}&page=1 --jq `)
   expect(calls()).toHaveLength(2)
   expect(createTasks(db).list(PROJECT)).toEqual([
@@ -104,6 +106,21 @@ it('refuse d’importer depuis une autre source GitHub que celle du premier impo
   setPage(1, { count: 1, issues: [issue(12, 'closed', 'Autre dépôt')] })
   await expect(syncIssues(db, PROJECT)).rejects.toThrow(/example\/projet.*example\/other/)
   expect(createTasks(db).list(PROJECT)).toEqual(before)
+})
+
+it('refuse clairement un dépôt hors de github.com, sans rien interroger ni enregistrer', async () => {
+  setSource(SOURCE, 'ghe.example.com')
+  await expect(syncIssues(db, PROJECT)).rejects.toThrow(/ghe\.example\.com.*github\.com/)
+  expect(calls().some((call) => call.startsWith('api'))).toBe(false)
+  expect(boundSource()).toBeNull()
+})
+
+it('n’enregistre rien quand une page suivante est refusée', async () => {
+  setPage(1, { count: ISSUES_PER_PAGE, issues: [issue(1, 'open')] })
+  setPage(2, { count: 1, issues: [{ number: 'deux' }] })
+  await expect(syncIssues(db, PROJECT)).rejects.toThrow()
+  expect(createTasks(db).list(PROJECT)).toEqual([])
+  expect(boundSource()).toBeNull()
 })
 
 it('remonte l’erreur de gh sans rien importer', async () => {
