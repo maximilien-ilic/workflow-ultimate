@@ -6,7 +6,9 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useState } from 'react'
+import { HISTORY_LINES } from '../../../shared/terminal-history'
 import { terminalStore } from './terminal-store'
+import { RESTORED_SEPARATOR, trackTerminalHistory } from './terminal-history'
 import { chunksForWrite } from './chunks'
 import { unseen } from './unseen'
 
@@ -80,7 +82,7 @@ export function TerminalView({ id, cwd, active, focusRequest, onFocus }: Props) 
     const term = new Terminal({
       fontFamily: '"JetBrains Mono", "Noto Sans Mono", monospace',
       fontSize: 13,
-      scrollback: 10_000,
+      scrollback: HISTORY_LINES,
       allowProposedApi: true, // requis par l'addon image (sixel)
       linkHandler: { activate: openOnCtrlClick }, // liens OSC 8 émis par les programmes
     })
@@ -132,9 +134,11 @@ export function TerminalView({ id, cwd, active, focusRequest, onFocus }: Props) 
 
     // Frontière ordonnée rejeu / direct : l'écran contient le flux jusqu'à `cursor`. Tant que le rejeu
     // n'est pas arrivé, la sortie en direct attend dans `queue`, puis seule sa partie inédite est écrite.
-    const isNew = terminalStore.isNew(id) // lu au montage (pas en prop) : un remontage rattache au lieu de recréer
+    const history = terminalStore.history(id)
+    let restoring = Boolean(history)
+    let disposed = false
     let cursor = 0
-    let ready = isNew
+    let ready = false
     let queue: { data: string; offset: number }[] = []
     // Écrit la partie inédite, puis acquitte le morceau entier une fois traité par xterm (contrôle de flux).
     const show = (data: string, offset: number, ackChars: number) => {
@@ -172,30 +176,58 @@ export function TerminalView({ id, cwd, active, focusRequest, onFocus }: Props) 
     })
 
     const input = term.onData((data) => enqueueInput(id, data))
-    const resized = term.onResize(
-      ({ cols, rows }) => void window.wu.invoke('terminal:resize', { id, cols, rows }),
-    )
-    const observer = new ResizeObserver(() => fit.fit())
+    const resized = term.onResize(({ cols, rows }) => {
+      if (!restoring) void window.wu.invoke('terminal:resize', { id, cols, rows })
+    })
+    const observer = new ResizeObserver(() => {
+      if (!restoring) fit.fit()
+    })
     observer.observe(el)
+    const stopSaving = trackTerminalHistory(id, term, () => ready)
 
     const fail = (e: unknown) => term.write(`\x1b[31m[${String(e)}]\x1b[0m\r\n`)
-    if (isNew) {
-      // Marqué lancé dès l'envoi : un remontage immédiat (split juste après l'ouverture) se rattache.
-      terminalStore.markStarted(id)
-      window.wu.invoke('terminal:create', { id, cwd, cols: term.cols, rows: term.rows }).catch(fail)
-    } else
+    const connect = () => {
+      if (terminalStore.isNew(id)) {
+        // Marqué dès l'envoi pour qu'un remontage pendant le lancement se rattache.
+        terminalStore.markStarted(id)
+        flush()
+        void window.wu
+          .invoke('terminal:create', {
+            id,
+            cwd: history?.cwd ?? cwd,
+            cols: term.cols,
+            rows: term.rows,
+          })
+          .catch(fail)
+        return
+      }
       void window.wu.invoke('terminal:attach', { id }).then(
         (replay) => {
+          if (disposed) return
           show(replay.data, replay.offset, 0) // le rejeu n'a jamais été compté comme non acquitté
           flush()
         },
         (e: unknown) => {
+          if (disposed) return
           fail(e)
           flush() // sans rejeu : on affiche quand même ce qui arrive, sans le retenir indéfiniment
         },
       )
+    }
+    if (history) {
+      // La sérialisation encode les retours à la ligne à la largeur d'origine.
+      term.resize(history.cols, history.rows)
+      term.write(history.data + RESTORED_SEPARATOR, () => {
+        if (disposed) return
+        fit.fit()
+        restoring = false
+        connect()
+      })
+    } else connect()
 
     return () => {
+      disposed = true
+      stopSaving()
       observer.disconnect()
       input.dispose()
       resized.dispose()

@@ -12,6 +12,9 @@ const api = {
     ipcRenderer.on('terminal:event', wrapped)
     return () => ipcRenderer.removeListener('terminal:event', wrapped)
   },
+  onTerminalHistoryFlush: (listener: () => void): void => {
+    ipcRenderer.on('terminal:flush-history', () => listener())
+  },
   // Changements d'état des agents lancés par cette fenêtre.
   onAgentEvent: (listener: (event: AgentEvent) => void): (() => void) => {
     const wrapped = (_: unknown, event: AgentEvent) => listener(event)

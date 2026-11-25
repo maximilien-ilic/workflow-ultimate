@@ -1,35 +1,36 @@
-import { closePane, paneIds, splitPane, type PaneTree } from './pane-tree'
+import { closePane, paneIds, splitPane } from './pane-tree'
+import type { TerminalHistory, TerminalLayout } from '../../../shared/ipc'
 
-export type Tab = { id: string; title: string; cwd: string; tree: PaneTree; activePane: string }
-type Selection = { tabs: Tab[]; activeTab: string | null }
-type State = Selection & { created: Set<string>; focusRequest: number }
+export type Tab = TerminalLayout['tabs'][number]
+type State = TerminalLayout & { created: Set<string>; focusRequest: number }
 
-// sessionStorage survit à un rechargement du renderer (pas à un redémarrage de l'appli) : après un
-// rechargement, les onglets se reconnectent à leurs PTY, toujours vivants dans le pty-host.
-// shortcut: la restauration après redémarrage de l'appli arrive avec #15
-const KEY = 'wu.terminals'
+let state: State = { tabs: [], activeTab: null, created: new Set(), focusRequest: 0 }
+const listeners = new Set<() => void>()
+const restored = new Map<string, TerminalHistory>()
 
-function load(): State {
-  try {
-    const saved = JSON.parse(sessionStorage.getItem(KEY) ?? 'null') as Selection | null
-    if (saved && Array.isArray(saved.tabs)) return { ...saved, created: new Set(), focusRequest: 0 }
-  } catch {
-    // stockage indisponible ou illisible : on repart de zéro
-  }
-  return { tabs: [], activeTab: null, created: new Set(), focusRequest: 0 }
+function set(next: TerminalLayout, requestFocus = false) {
+  const changed = next.tabs !== state.tabs || next.activeTab !== state.activeTab
+  if (!changed && !requestFocus) return
+  state = { ...next, created: state.created, focusRequest: state.focusRequest + Number(requestFocus) }
+  if (changed) void window.wu.invoke('terminal:saveLayout', next).catch(console.error)
+  listeners.forEach((l) => l())
 }
 
-let state = load()
-const listeners = new Set<() => void>()
-
-function set(next: Selection, requestFocus = false) {
-  state = { ...next, created: state.created, focusRequest: state.focusRequest + Number(requestFocus) }
+export async function restoreTerminalWorkspace() {
   try {
-    sessionStorage.setItem(KEY, JSON.stringify({ tabs: state.tabs, activeTab: state.activeTab }))
-  } catch {
-    // sans stockage, on perd seulement la reconnexion après rechargement
+    const { layout, livePanes, historyPanes } = await window.wu.invoke('terminal:workspace', {})
+    const live = new Set(livePanes)
+    const created = new Set(layout.tabs.flatMap((tab) => paneIds(tab.tree)).filter((id) => !live.has(id)))
+    state = { ...layout, created, focusRequest: 0 }
+    await Promise.all(
+      historyPanes.map(async (id) => {
+        const history = await window.wu.invoke('terminal:loadHistory', { id })
+        if (history) restored.set(id, history)
+      }),
+    )
+  } catch (error) {
+    console.error('Restauration des terminaux impossible', error)
   }
-  listeners.forEach((l) => l())
 }
 
 const activeTabOf = () => state.tabs.find((t) => t.id === state.activeTab)
@@ -40,6 +41,7 @@ export const terminalStore = {
     return () => listeners.delete(listener)
   },
   get: () => state,
+  history: (id: string) => restored.get(id),
   // Un volet pas encore lancé doit créer son PTY ; tout autre (restauré, ou remonté après un split) s'y rattache.
   isNew: (paneId: string) => state.created.has(paneId),
   markStarted: (paneId: string) => void state.created.delete(paneId),
@@ -77,9 +79,14 @@ export const terminalStore = {
   },
   focusPane(tabId: string, paneId: string, requestFocus = false) {
     if (!requestFocus && state.activeTab !== tabId) return
+    const tab = state.tabs.find((item) => item.id === tabId)
+    if (!tab) return
     set(
       {
-        tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, activePane: paneId } : t)),
+        tabs:
+          tab.activePane === paneId
+            ? state.tabs
+            : state.tabs.map((t) => (t === tab ? { ...t, activePane: paneId } : t)),
         activeTab: tabId,
       },
       requestFocus,
@@ -100,7 +107,9 @@ export const terminalStore = {
   closeActivePane() {
     const tab = activeTabOf()
     if (!tab) return
-    void window.wu.invoke('terminal:kill', { id: tab.activePane })
+    if (!state.created.delete(tab.activePane))
+      void window.wu.invoke('terminal:kill', { id: tab.activePane }).catch(console.error)
+    restored.delete(tab.activePane)
     const tree = closePane(tab.tree, tab.activePane)
     if (!tree) {
       const tabs = state.tabs.filter((t) => t.id !== tab.id)
