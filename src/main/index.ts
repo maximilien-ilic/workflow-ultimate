@@ -11,6 +11,7 @@ import { registerAgentHandlers } from './modules/agents/sessions'
 import { profileSocketPath } from './modules/agents/profile-socket'
 import { startAgentSocket } from './modules/agents/socket'
 import { registerProjectHandlers } from './modules/projects/ipc'
+import { registerReviewHandlers } from './modules/review/ipc'
 import { registerTerminalHandlers } from './modules/terminals/ipc'
 import { startPtyHost } from './modules/terminals/pty-host'
 import { registerSettings } from './modules/shell/settings'
@@ -44,6 +45,7 @@ void app.whenReady().then(async () => {
     return
   }
   registerProjectHandlers(db)
+  registerReviewHandlers(db)
   const ptyHost = startPtyHost()
   const terminals = registerTerminalHandlers(ptyHost)
 

@@ -5,6 +5,7 @@ import { OrcaImportDialog } from './modules/projects/OrcaImportDialog'
 import { useWorkspace } from './modules/projects/workspace'
 import { ShellLayout } from './modules/shell/ShellLayout'
 import { AgentOverview } from './modules/agents/AgentOverview'
+import { ReviewView } from './modules/review/ReviewView'
 import { TerminalArea } from './modules/terminals/TerminalArea'
 import { ProjectPicker } from './modules/projects/ProjectPicker'
 
@@ -27,6 +28,7 @@ export function App() {
         )}
         <TerminalArea />
         <AgentOverview />
+        <ReviewView />
         <OrcaImportDialog select={workspace.select} refresh={workspace.refresh} />
       </main>
     </ShellLayout>

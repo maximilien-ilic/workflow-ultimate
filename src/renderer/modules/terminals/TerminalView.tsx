@@ -125,7 +125,7 @@ export function TerminalView({ id, cwd, active, focusRequest, onFocus }: Props) 
         return false
       }
       // Raccourcis de la zone de terminaux (onglets, splits) : laissés à la fenêtre.
-      if (ctrlShift && ['KeyD', 'KeyE', 'KeyT', 'KeyW', 'KeyA', 'KeyJ'].includes(e.code)) return false
+      if (ctrlShift && ['KeyD', 'KeyE', 'KeyT', 'KeyW', 'KeyA', 'KeyJ', 'KeyG'].includes(e.code)) return false
       if (e.altKey && !e.ctrlKey && /^Digit[1-9]$/.test(e.code)) return false
       return true
     })

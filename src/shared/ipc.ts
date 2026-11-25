@@ -59,6 +59,22 @@ export const ipcRequestSchemas = {
     .object({ sessionId: z.uuid(), terminalId: z.uuid(), cols: dimension, rows: dimension })
     .strict(),
   'agents:list': z.object({}).strict(),
+  // Diff d'un worktree par rapport au point de départ de sa branche.
+  'review:changes': z.object({ projectId: z.uuid(), worktreePath: absolutePath }).strict(),
+  'review:file': z
+    .object({
+      projectId: z.uuid(),
+      worktreePath: absolutePath,
+      mergeBase: z.string().regex(/^[0-9a-f]{40,64}$/, 'hash git attendu'),
+      file: z
+        .object({
+          status: z.enum(['added', 'modified', 'deleted', 'renamed']),
+          path: z.string().min(1).max(4096),
+          oldPath: z.string().min(1).max(4096).optional(),
+        })
+        .strict(),
+    })
+    .strict(),
 } satisfies Record<string, z.ZodType>
 
 export type AppInfo = { name: string; version: string; electron: string; node: string }
@@ -85,6 +101,11 @@ export type AgentSession = {
 }
 // Poussé sur le canal `agent:event` à la fenêtre qui a lancé l'agent.
 export type AgentEvent = { sessionId: string; terminalId: string; state: AgentState }
+export type ChangedFile = {
+  status: 'added' | 'modified' | 'deleted' | 'renamed'
+  path: string
+  oldPath?: string
+}
 export type PickResult = { added: Project[]; rejected: { path: string; reason: string }[] }
 export type OrcaImport = {
   repos: { path: string; name: string; color: string | null }[]
@@ -117,6 +138,8 @@ interface IpcResponses {
   'agents:start': AgentSession
   'agents:resume': AgentSession
   'agents:list': AgentSession[]
+  'review:changes': { base: string; mergeBase: string; files: ChangedFile[] }
+  'review:file': { binary: boolean; before: string; after: string }
   'diagnostics:report': string
   'settings:get': Settings
   'settings:set': null

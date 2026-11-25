@@ -1,0 +1,35 @@
+/* shortcut: style minimal, le style visuel est reporté à M5 */
+.review {
+  width: 95vw;
+  height: 90vh;
+}
+.review[open] {
+  display: flex;
+  flex-direction: column;
+}
+.review header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.review-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+}
+.review-body ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 28%;
+  overflow: auto;
+  font-size: 12px;
+}
+.review-body button[aria-current='true'] {
+  font-weight: 700;
+}
+.review-editor {
+  flex: 1;
+  min-width: 0;
+}

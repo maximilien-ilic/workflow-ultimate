@@ -108,7 +108,9 @@ test('un collage plus long que la borne du canal arrive entier, dans l’ordre',
   const id = (await host.getAttribute('data-terminal-id'))!
   await host.click()
   // Mode non canonique : sinon le TTY Linux tronque toute ligne au-delà de 4 096 caractères.
-  await page.keyboard.type('stty -icanon -echo; head -c 70000 | wc -c; stty sane\n')
+  await page.keyboard.type('stty -icanon -echo; echo pret-$((1+1)); head -c 70000 | wc -c; stty sane\n')
+  // Coller seulement quand head lit déjà : sinon le collage arrive dans l'éditeur de ligne du shell.
+  await expect.poll(() => screenOf(page, id)).toMatch(/^pret-2$/m)
   // 70 000 caractères : au-delà de la borne de 65 536 du canal terminal:write, il faut découper.
   await app.evaluate(({ clipboard }) => clipboard.writeText('x'.repeat(70000)), undefined)
   await page.keyboard.press('Control+Shift+V')
