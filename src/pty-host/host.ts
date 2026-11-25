@@ -3,7 +3,16 @@ import { spawn, type IPty } from 'node-pty'
 import type { HostEvent, HostRequest } from '../shared/pty-protocol'
 import { RingBuffer } from './ring-buffer'
 
-type Terminal = { pty: IPty; buffer: RingBuffer; exited: boolean; closing: boolean; total: number }
+type Terminal = {
+  pty: IPty
+  buffer: RingBuffer
+  exited: boolean
+  closing: boolean
+  total: number
+  killTimer?: ReturnType<typeof setTimeout>
+}
+
+const TERMINATION_GRACE_MS = 500
 
 const isDirectory = (path: string) => statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false
 
@@ -47,11 +56,33 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
       send({ type: 'data', id: req.id, data, offset: term.total })
     })
     pty.onExit(({ exitCode, signal }) => {
+      clearTimeout(term.killTimer)
       term.exited = true
       send({ type: 'exit', id: req.id, exitCode, signal: signal || null })
       if (term.closing) close(req.id) // fermé par l'utilisateur : plus personne ne rejouera ce tampon
     })
     send({ type: 'spawned', id: req.id, pid: pty.pid })
+  }
+
+  function killTerminal(request: Extract<HostRequest, { type: 'kill' }>): void {
+    const terminal = terminals.get(request.id)
+    if (!terminal) {
+      if (request.expiredSpawn) return close(request.id)
+      return error(request, `Terminal « ${request.id} » inconnu`)
+    }
+    if (terminal.exited) return close(request.id)
+    terminal.closing = true
+    if (request.expiredSpawn && !terminal.killTimer) {
+      // Personne ne peut fermer ce PTY à la main s'il survit au premier signal.
+      terminal.killTimer = setTimeout(() => {
+        try {
+          terminal.pty.kill('SIGKILL')
+        } catch (cause) {
+          error(request, `Arrêt forcé impossible : ${String(cause)}`)
+        }
+      }, TERMINATION_GRACE_MS)
+    }
+    terminal.pty.kill()
   }
 
   // Frontière de chaque requête : une exception (EACCES, PTY déjà fermé…) devient une erreur
@@ -66,18 +97,12 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
 
   function dispatch(req: HostRequest): void {
     if (req.type === 'spawn') return spawnTerminal(req)
+    if (req.type === 'kill') return killTerminal(req)
     const term = terminals.get(req.id)
     if (!term) return error(req, `Terminal « ${req.id} » inconnu`)
     switch (req.type) {
       case 'replay':
         return send({ type: 'replay', id: req.id, data: term.buffer.read(), offset: term.total })
-      case 'kill':
-        if (term.exited) close(req.id)
-        else {
-          term.closing = true
-          term.pty.kill()
-        }
-        return
       case 'pause':
         return term.pty.pause()
       case 'resume':

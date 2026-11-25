@@ -4,29 +4,38 @@ type Props = {
   projectId: string
   worktreePath: string
   checkedPaths: string[]
-  allChecked: boolean
-  onCommitted: () => void
+  onCommitted: () => Promise<void>
+  onSuggestMessage: () => Promise<void>
 }
 
-// Commit des fichiers cochés (tous si tout est coché), puis push à la demande. Les erreurs de git
-// s'affichent telles quelles : c'est le message le plus utile pour comprendre ce qui bloque.
-export function CommitForm({ projectId, worktreePath, checkedPaths, allChecked, onCommitted }: Props) {
+// Commit des fichiers de la sélection affichée, puis push à la demande.
+export function CommitForm({ projectId, worktreePath, checkedPaths, onCommitted, onSuggestMessage }: Props) {
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState('')
+  const [pending, setPending] = useState(false)
   const worktree = { projectId, worktreePath }
 
   const commit = async () => {
-    const paths = allChecked ? undefined : checkedPaths
-    const { sha } = await window.wu.invoke('review:commit', { ...worktree, message, paths })
+    const { sha } = await window.wu.invoke('review:commit', { ...worktree, message, paths: checkedPaths })
     setMessage('')
     setStatus(`Commit ${sha.slice(0, 7)} créé.`)
-    onCommitted()
+    await onCommitted()
   }
   const push = async () => {
     const { output } = await window.wu.invoke('review:push', worktree)
     setStatus(output || 'Branche poussée.')
   }
-  const run = (action: () => Promise<void>) => action().catch((e: unknown) => setStatus(String(e)))
+  const run = async (action: () => Promise<void>) => {
+    if (pending) return
+    setPending(true)
+    try {
+      await action()
+    } catch (error) {
+      setStatus(String(error))
+    } finally {
+      setPending(false)
+    }
+  }
 
   return (
     <form
@@ -39,14 +48,18 @@ export function CommitForm({ projectId, worktreePath, checkedPaths, allChecked, 
     >
       <textarea
         aria-label="Message de commit"
+        disabled={pending}
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         placeholder="feat(module): ce qui change"
       />
-      <button type="submit" disabled={!message.trim() || checkedPaths.length === 0}>
+      <button type="submit" disabled={pending || !message.trim() || checkedPaths.length === 0}>
         Commiter
       </button>
-      <button type="button" onClick={() => void run(push)}>
+      <button type="button" disabled={pending || checkedPaths.length === 0} onClick={() => void run(onSuggestMessage)}>
+        Demander un message à un agent
+      </button>
+      <button type="button" disabled={pending} onClick={() => void run(push)}>
         Pousser
       </button>
       {status && <p role="status">{status}</p>}

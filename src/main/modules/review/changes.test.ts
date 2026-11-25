@@ -59,7 +59,44 @@ describe('changedFiles', () => {
   })
 })
 
+describe('changedFiles, cas limites', () => {
+  it("compare à origin/<branche> quand la branche de base n'existe qu'à distance", async () => {
+    const clone = join(dir, 'clone')
+    git(dir, 'clone', '-q', repo, clone) // origin/HEAD → origin/feat/x (branche active du dépôt source)
+    git(repo, 'switch', '-q', 'main')
+    git(clone, 'fetch', '-q', 'origin', 'main:refs/remotes/origin/main')
+    git(clone, 'remote', 'set-head', 'origin', 'main')
+    git(clone, 'switch', '-q', '-c', 'feat/clone')
+    const { base } = await changedFiles(clone)
+    expect(base).toBe('origin/main')
+  })
+
+  it("un fichier retiré de l'index mais resté sur le disque n'apparaît qu'une fois", async () => {
+    git(repo, 'rm', '-q', '--cached', 'garde.txt')
+    const { files } = await changedFiles(repo)
+    expect(files.filter((f) => f.path === 'garde.txt')).toHaveLength(1)
+  })
+})
+
 describe('fileVersions', () => {
+  it('refuse un chemin dont un dossier parent est un lien symbolique vers l’extérieur', async () => {
+    mkdirSync(join(dir, 'dehors'))
+    writeFileSync(join(dir, 'dehors', 'secret.txt'), 'NE PAS LIRE\n')
+    symlinkSync(join(dir, 'dehors'), join(repo, 'lien-dossier'))
+    const { mergeBase } = await changedFiles(repo)
+    await expect(
+      fileVersions(repo, mergeBase, { status: 'added', path: 'lien-dossier/secret.txt' }),
+    ).rejects.toThrow(/hors du worktree/)
+  })
+
+  it('ne lit jamais un fichier spécial (FIFO) : il bloquerait', async () => {
+    execFileSync('mkfifo', [join(repo, 'tube')])
+    const { mergeBase } = await changedFiles(repo)
+    await expect(fileVersions(repo, mergeBase, { status: 'added', path: 'tube' })).resolves.toMatchObject({
+      binary: true,
+    })
+  })
+
   it('donne le contenu avant (point de départ) et après (dossier de travail)', async () => {
     writeFileSync(join(repo, 'modif.txt'), 'après\n')
     const { mergeBase } = await changedFiles(repo)

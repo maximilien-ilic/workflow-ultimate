@@ -19,8 +19,7 @@ export function registerReviewHandlers(db: DatabaseSync): void {
   )
   handle('review:commit', async ({ projectId, worktreePath, message, paths }) => {
     const worktree = await checkedWorktree(db, projectId, worktreePath)
-    paths?.forEach((path) => insideWorktree(worktree, path))
-    return { sha: await commitChanges(worktree, message, paths) }
+    return { sha: await commitChanges(worktree, message, paths?.map((path) => insideWorktree(worktree, path))) }
   })
   handle('review:push', async ({ projectId, worktreePath }) => ({
     output: await pushBranch(await checkedWorktree(db, projectId, worktreePath)),

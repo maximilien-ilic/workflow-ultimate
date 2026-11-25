@@ -1,5 +1,6 @@
-import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { once } from 'node:events'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -19,6 +20,19 @@ const tables = (db: DatabaseSync) =>
 
 const m1: Migration = { version: 1, name: 'a', sql: 'CREATE TABLE a (id INTEGER PRIMARY KEY);' }
 const m2: Migration = { version: 2, name: 'b', sql: 'CREATE TABLE b (id INTEGER PRIMARY KEY);' }
+
+async function waitForLock(holder: ChildProcess) {
+  const exited = once(holder, 'exit').then(([code, signal]) => {
+    if (code !== 0) throw new Error(`Le processus SQLite a échoué (${code ?? signal})`)
+  })
+  await Promise.race([
+    once(holder, 'message'),
+    exited.then(() => {
+      throw new Error('Le processus SQLite est sorti avant de signaler le verrou')
+    }),
+  ])
+  return { exited }
+}
 
 describe('dataDir', () => {
   it('respecte XDG_DATA_HOME', () => {
@@ -132,17 +146,36 @@ describe('openDatabase', () => {
   it('attend un verrou brièvement tenu par une autre connexion avant de passer en WAL', async () => {
     const file = join(dir, 'app.db')
     new DatabaseSync(file).close()
-    const marker = join(dir, 'verrou-pris')
-    // Une autre connexion (autre processus) tient le verrou d'écriture 400 ms.
-    const holder = spawn(process.execPath, [
-      '-e',
-      `const {DatabaseSync}=require('node:sqlite');const fs=require('node:fs');const d=new DatabaseSync(${JSON.stringify(file)});d.exec('BEGIN IMMEDIATE');fs.writeFileSync(${JSON.stringify(marker)},'');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,400);d.exec('COMMIT');d.close()`,
-    ])
-    while (!existsSync(marker)) await new Promise((r) => setTimeout(r, 10))
-    const db = openDatabase(file, [m1])
-    expect(db.prepare('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'wal' })
-    db.close()
-    await new Promise((r) => holder.on('exit', r))
+    const holder = spawn(
+      process.execPath,
+      [
+        '-e',
+        `const { DatabaseSync } = require('node:sqlite')
+        const db = new DatabaseSync(process.argv[1])
+        db.exec('BEGIN IMMEDIATE')
+        process.send('verrou-pris')
+        const lockHoldMs = 400
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, lockHoldMs)
+        db.exec('COMMIT')
+        db.close()`,
+        file,
+      ],
+      { stdio: ['ignore', 'ignore', 'inherit', 'ipc'] },
+    )
+    const { exited } = await waitForLock(holder)
+    try {
+      using db = openDatabase(file, [m1])
+      expect(db.prepare('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'wal' })
+    } finally {
+      await exited
+    }
+  })
+
+  it('échoue si le processus SQLite sort avant de signaler le verrou', async () => {
+    const holder = spawn(process.execPath, ['-e', 'process.exitCode = 42'], {
+      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+    })
+    await expect(waitForLock(holder)).rejects.toThrow(/SQLite.*42/)
   })
 
   it('crée le dossier, active WAL et migre', () => {

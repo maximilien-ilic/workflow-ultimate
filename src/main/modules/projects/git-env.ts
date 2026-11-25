@@ -38,9 +38,15 @@ const GIT_REPOSITORY_REDIRECTS = new Set([
 export const redirectsGitRepository = (name: string) =>
   GIT_REPOSITORY_REDIRECTS.has(name) || /^GIT_CONFIG_(PARAMETERS|COUNT|KEY_\d+|VALUE_\d+)$/.test(name)
 
-// Pour parler à un dépôt distant : on garde l'authentification de l'utilisateur (GIT_SSH_COMMAND,
-// GIT_ASKPASS…) mais jamais d'invite interactive, qui bloquerait l'appli sans terminal.
+// Pour parler à un dépôt distant : garder les identifiants et agents existants et couper les invites.
 export function remoteGitEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const kept = Object.entries(env).filter(([name]) => !redirectsGitRepository(name))
-  return { ...Object.fromEntries(kept), GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' }
+  return {
+    ...Object.fromEntries(kept),
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_ASKPASS: '/bin/false',
+    SSH_ASKPASS_REQUIRE: 'never',
+    GCM_INTERACTIVE: 'never',
+    LC_ALL: 'C',
+  }
 }

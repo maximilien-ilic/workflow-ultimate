@@ -59,24 +59,18 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
     // Seule l'attente qui correspond à la requête en erreur échoue (une écriture ratée ne casse pas un rejeu).
     if (event.type === 'error' && event.request === 'spawn') spawns.fail(event.id, new Error(event.message))
     if (event.type === 'error' && event.request === 'replay') replays.fail(event.id, new Error(event.message))
+    if (event.type === 'closed') {
+      releasing.delete(event.id)
+      owners.delete(event.id)
+      flow.forget(event.id)
+      return
+    }
+    if (!owners.has(event.id)) return
     if (event.type === 'data' && flow.onData(event.id, event.data.length) === 'pause')
       host.send({ type: 'pause', id: event.id })
     if (event.type === 'exit') {
       flow.forget(event.id)
       for (const listener of exitListeners) listener(event.id, event.exitCode)
-    }
-    // Fermeture d'un lancement expiré : confirmée, ou refusée parce que le PTY n'a jamais existé.
-    if (
-      (event.type === 'closed' || (event.type === 'error' && event.request === 'kill')) &&
-      releasing.delete(event.id)
-    )
-      return
-    if (releasing.has(event.id)) return // confirmation ou sortie tardive d'un lancement expiré : ignorée
-    // Fermeture confirmée par le pty-host (qu'il ait tourné ou non) : le main oublie le terminal.
-    if (event.type === 'closed') {
-      owners.delete(event.id)
-      flow.forget(event.id)
-      return
     }
     sendTo(event.id, event)
   })
@@ -94,6 +88,7 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
       if (!starting.has(id)) for (const listener of exitListeners) listener(id, -1)
     owners.clear()
     releasing.clear()
+    flow.clear()
   }
   let unavailable = false
   host.events.on('restarted', () => hostLost('pty-host redémarré : terminal perdu'))
@@ -122,7 +117,7 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
         // Le pty-host a pu lancer le PTY sans répondre à temps : on le ferme, et l'id reste réservé
         // jusqu'à la confirmation, pour qu'une relance ne récupère pas la réponse tardive du premier.
         releasing.add(id)
-        host.send({ type: 'kill', id })
+        host.send({ type: 'kill', id, expiredSpawn: true })
       }
       throw error
     } finally {

@@ -24,6 +24,26 @@ const ack = (id: string, chars: number) => void window.wu.invoke('terminal:ack',
 // Sert aux tests e2e et au débogage ; ne donne accès à rien que le renderer n'ait déjà.
 const mounted = new Map<string, Terminal>()
 
+// Un split remonte xterm alors qu'un collage peut encore attendre une réponse IPC.
+const pendingInput = new Map<string, Promise<void>>()
+
+function enqueueInput(id: string, data: string): void {
+  const previous = pendingInput.get(id) ?? Promise.resolve()
+  const writing = previous.then(async () => {
+    for (const chunk of chunksForWrite(data)) {
+      try {
+        await window.wu.invoke('terminal:write', { id, data: chunk })
+      } catch (error) {
+        mounted.get(id)?.write(`\x1b[31m[saisie non transmise : ${String(error)}]\x1b[0m\r\n`)
+      }
+    }
+  })
+  pendingInput.set(id, writing)
+  void writing.finally(() => {
+    if (pendingInput.get(id) === writing) pendingInput.delete(id)
+  })
+}
+
 // Dernières lignes non vides affichées par un terminal (aperçu de la vue d'ensemble des agents).
 export function lastLines(id: string, count: number): string[] {
   const buffer = mounted.get(id)?.buffer.active
@@ -151,17 +171,7 @@ export function TerminalView({ id, cwd, active, focusRequest, onFocus }: Props) 
       else term.write(`\r\n\x1b[31m[${event.message}]\x1b[0m\r\n`)
     })
 
-    // Écritures en série : un collage long est découpé (borne du canal) et ses morceaux partent dans l'ordre.
-    let writes = Promise.resolve()
-    const input = term.onData((data) => {
-      for (const chunk of chunksForWrite(data))
-        writes = writes.then(() =>
-          window.wu.invoke('terminal:write', { id, data: chunk }).then(
-            () => undefined,
-            (e: unknown) => fail(`saisie non transmise : ${String(e)}`),
-          ),
-        )
-    })
+    const input = term.onData((data) => enqueueInput(id, data))
     const resized = term.onResize(
       ({ cols, rows }) => void window.wu.invoke('terminal:resize', { id, cols, rows }),
     )
