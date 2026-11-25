@@ -3,7 +3,7 @@ import type { ChangedFile } from '../../../shared/ipc'
 import { agentStore, startAgent } from '../agents/agent-store'
 import { registerCommand } from '../palette/commands'
 import { CommitForm } from './CommitForm'
-import { ReviewComments } from './ReviewComments'
+import { ReviewComments, type ReviewCommentEditor } from './ReviewComments'
 import { terminalStore } from '../terminals/terminal-store'
 import './review.css'
 
@@ -93,6 +93,7 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
   const [message, setMessage] = useState('')
   const [fileMessage, setFileMessage] = useState('')
   const [anchor, setAnchor] = useState<{ file: ChangedFile; line: number; maxLine: number }>()
+  const commentEditor = useRef<ReviewCommentEditor>(null)
 
   const [excluded, setExcluded] = useState<Set<string>>(new Set()) // fichiers décochés pour le commit
 
@@ -199,6 +200,7 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
         setAnchor({ file, line: 1, maxLine })
         cursorListener = side.onDidChangeCursorPosition(({ position }) => {
           setAnchor({ file, line: position.lineNumber, maxLine })
+          commentEditor.current?.selectLine(file.path, position.lineNumber)
         })
       }
       setFileMessage(versions.binary ? MESSAGE_BINARY : '')
@@ -283,6 +285,7 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
       </div>
       {target && (
         <ReviewComments
+          ref={commentEditor}
           key={target.request}
           projectId={target.projectId}
           worktreePath={target.worktreePath}

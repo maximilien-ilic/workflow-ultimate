@@ -92,6 +92,10 @@ test('le brouillon et sa ligne restent propres à chaque fichier pendant la revu
 
     await line.fill('2')
     await draft.fill('Brouillon A')
+    await review.locator('.editor.modified .view-line').filter({ hasText: /^a3$/ }).click({ position: { x: 5, y: 7 } })
+    await expect(line).toHaveValue('3')
+    await expect(draft).toHaveValue('Brouillon A')
+    await line.fill('2')
     await select('b.txt')
     await expect(draft).toHaveValue('')
     await line.fill('3')
