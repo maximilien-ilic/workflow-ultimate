@@ -1,0 +1,31 @@
+.quick-launch {
+  --launcher-spacing: 12px;
+  display: grid;
+  gap: var(--launcher-spacing);
+  padding: var(--launcher-spacing);
+}
+
+.quick-launch-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--launcher-spacing);
+}
+
+.quick-launch label {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.quick-launch :is(input, select, button) {
+  font: inherit;
+}
+
+.quick-launch button {
+  justify-self: end;
+}
+
+.quick-launch [role='alert'] {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

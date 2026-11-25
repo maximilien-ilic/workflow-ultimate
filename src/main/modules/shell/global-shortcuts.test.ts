@@ -1,8 +1,10 @@
 import { execFile, type ExecException } from 'node:child_process'
 import { app, BrowserWindow, globalShortcut } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { showQuickLaunch } from './quick-launch'
 import { globalShortcutStatus, registerGlobalShortcuts } from './global-shortcuts'
 
+vi.mock('./quick-launch', () => ({ isQuickLaunchWindow: () => false, showQuickLaunch: vi.fn() }))
 vi.mock('node:child_process', () => ({ execFile: vi.fn() }))
 vi.mock('electron', () => ({
   app: { commandLine: { getSwitchValue: vi.fn() }, once: vi.fn() },
@@ -54,7 +56,7 @@ describe('raccourci global', () => {
     expect((await globalShortcutStatus()).message).toContain('Meta+Shift+W attribué à Workflow Ultimate')
     portalResponse(null, '(@a(ssssssaiai) [],)')
     expect((await globalShortcutStatus()).message).toContain('Meta+Shift+W non attribué à Workflow Ultimate')
-    expect(globalShortcut.register).toHaveBeenCalledExactlyOnceWith('Super+Shift+W', expect.any(Function))
+    expect(globalShortcut.register).toHaveBeenCalledWith('Super+Shift+W', expect.any(Function))
     const toggle = vi.mocked(globalShortcut.register).mock.calls[0]![1]
     toggle()
     expect(window.hide).toHaveBeenCalledOnce()
@@ -70,10 +72,27 @@ describe('raccourci global', () => {
     toggle()
     expect(window.restore).toHaveBeenCalledOnce()
 
-    expect(app.once).toHaveBeenCalledExactlyOnceWith('will-quit', expect.any(Function))
+    expect(app.once).toHaveBeenCalledWith('will-quit', expect.any(Function))
     const unregister = vi.mocked(app.once).mock.calls[0]![1]
     unregister()
     expect(globalShortcut.unregister).toHaveBeenCalledExactlyOnceWith('Super+Shift+W')
+  })
+
+  it('ouvre le lanceur avec Super+Shift+N même si Super+Shift+W est refusé', async () => {
+    portalResponse(null)
+    vi.mocked(globalShortcut.register).mockReturnValueOnce(false).mockReturnValueOnce(true)
+    const window = {} as BrowserWindow
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([window])
+    await registerGlobalShortcuts()
+
+    expect(globalShortcut.register).toHaveBeenCalledWith('Super+Shift+N', expect.any(Function))
+    const open = vi.mocked(globalShortcut.register).mock.calls[1]![1]
+    open()
+    expect(showQuickLaunch).toHaveBeenCalledExactlyOnceWith(window)
+
+    const unregister = vi.mocked(app.once).mock.calls[0]![1]
+    unregister()
+    expect(globalShortcut.unregister).toHaveBeenCalledExactlyOnceWith('Super+Shift+N')
   })
 
   it('consigne le repli quand le portail est inaccessible', async () => {

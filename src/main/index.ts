@@ -17,7 +17,7 @@ import { registerTaskHandlers } from './modules/orchestration/ipc'
 import { registerTerminalHandlers } from './modules/terminals/ipc'
 import { startPtyHost } from './modules/terminals/pty-host'
 import { registerSettings } from './modules/shell/settings'
-import { registerSingleInstance } from './modules/shell/single-instance'
+import { parseAction, quickLaunchActionId, registerSingleInstance, runMainAction } from './modules/shell/single-instance'
 import { createMainWindow } from './modules/shell/window'
 
 if (!registerSingleInstance()) app.exit(0)
@@ -87,6 +87,7 @@ void app.whenReady().then(async () => {
     db.close()
   })
   const onAgentStateChange = registerAgentDesktop(createMainWindow())
+  if (parseAction(process.argv) === quickLaunchActionId) runMainAction(quickLaunchActionId)
 })
 void app.whenReady().then(registerGlobalShortcuts)
 app.on('window-all-closed', () => app.quit())
