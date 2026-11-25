@@ -4,6 +4,7 @@ import { registerCommand } from '../palette/commands'
 import './task-board.css'
 
 type Draft = Pick<Task, 'title' | 'body'>
+type SaveDraft = (draft: Draft) => Promise<boolean>
 type Direction = -1 | 1
 type Move = { id: number; direction: Direction }
 
@@ -17,38 +18,61 @@ const columnTitles: Record<TaskStatus, string> = {
 const neighbour = (status: TaskStatus, direction: Direction): TaskStatus | undefined =>
   taskStatuses[taskStatuses.indexOf(status) + direction]
 
-function TaskEditor({ task, onSave, onCancel }: { task: Task; onSave: (draft: Draft) => void; onCancel: () => void }) {
-  const [title, setTitle] = useState(task.title)
-  const [body, setBody] = useState(task.body)
-  function submit(event: FormEvent) {
+function TaskForm({ task, onSave, onClose }: { task?: Task; onSave: SaveDraft; onClose?: (restoreFocus: boolean) => void }) {
+  const [title, setTitle] = useState(task?.title ?? '')
+  const [body, setBody] = useState(task?.body ?? '')
+  const [saving, setSaving] = useState(false)
+  const submitting = useRef(false)
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    onSave({ title, body })
+    const form = event.currentTarget
+    // Le ref bloque aussi deux soumissions avant le prochain rendu.
+    if (submitting.current) return
+    submitting.current = true
+    setSaving(true)
+    try {
+      if (await onSave({ title, body })) {
+        if (onClose) onClose(form.contains(document.activeElement))
+        else setTitle('')
+      }
+    } finally {
+      submitting.current = false
+      setSaving(false)
+    }
   }
+
+  function cancel() {
+    if (!submitting.current) onClose?.(true)
+  }
+
   return (
     <form onSubmit={submit}>
-      <input aria-label="Titre de la tâche" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus required />
-      <textarea aria-label="Description de la tâche" value={body} onChange={(e) => setBody(e.target.value)} />
-      <button type="submit">Enregistrer</button> <button type="button" onClick={onCancel}>Annuler</button>
+      <input aria-label={task ? 'Titre de la tâche' : 'Nouvelle tâche'} value={title}
+        onChange={(e) => setTitle(e.target.value)} autoFocus={Boolean(task)} readOnly={saving} required />
+      {task && <textarea aria-label="Description de la tâche" value={body} onChange={(e) => setBody(e.target.value)} readOnly={saving} />}
+      <button type="submit" aria-disabled={saving}>{task ? 'Enregistrer' : 'Ajouter'}</button>
+      {onClose && <button type="button" aria-disabled={saving} onClick={cancel}>Annuler</button>}
     </form>
   )
 }
 
-type CardProps = { task: Task; lastMove: Move | null; onMove: (direction: Direction) => void; onSave: (draft: Draft) => void }
+type CardProps = { task: Task; lastMove: Move | null; onMove: (direction: Direction) => void; onSave: SaveDraft }
 
 function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
   const [editing, setEditing] = useState(false)
-  const [editorClosed, setEditorClosed] = useState(false)
-  const closeEditor = () => {
+  const [editorCloseFocus, setEditorCloseFocus] = useState<boolean | null>(null)
+  const closeEditor = (restoreFocus: boolean) => {
     setEditing(false)
-    setEditorClosed(true)
+    setEditorCloseFocus(restoreFocus)
   }
   if (editing)
-    return <TaskEditor task={task} onCancel={closeEditor} onSave={(draft) => { closeEditor(); onSave(draft) }} />
-  // Déplacer ou fermer l'éditeur recrée les boutons : un seul reçoit le focus pour enchaîner au clavier.
-  // Fermer l'éditeur l'emporte ; une carte arrivée dans une colonne du bord le rend aussi à « Éditer ».
+    return <TaskForm task={task} onClose={closeEditor} onSave={onSave} />
+  // Une carte déplacée privilégie le même sens, puis « Éditer » au bord du tableau.
+  // À la fermeture de l'éditeur, « Éditer » récupère le focus s'il était encore dans le formulaire.
   const lastDirection = lastMove?.id === task.id ? lastMove.direction : null
-  const moved = !editorClosed && lastDirection && neighbour(task.status, lastDirection) ? lastDirection : null
-  const focusEdit = editorClosed || (lastDirection !== null && moved === null)
+  const moved = editorCloseFocus === null && lastDirection && neighbour(task.status, lastDirection) ? lastDirection : null
+  const focusEdit = editorCloseFocus ?? (lastDirection !== null && moved === null)
   const moveButton = (direction: Direction) => {
     const target = neighbour(task.status, direction)
     if (!target) return null
@@ -71,21 +95,6 @@ function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
   )
 }
 
-function NewTaskForm({ onCreate }: { onCreate: (draft: Draft) => void }) {
-  const [title, setTitle] = useState('')
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    onCreate({ title, body: '' })
-    setTitle('')
-  }
-  return (
-    <form onSubmit={submit}>
-      <input aria-label="Nouvelle tâche" value={title} onChange={(e) => setTitle(e.target.value)} required />
-      <button type="submit">Ajouter</button>
-    </form>
-  )
-}
-
 // Tableau de tâches du projet sélectionné (Ctrl+Shift+K). Le parent le recrée à chaque changement de projet.
 export function TaskBoard({ projectId }: { projectId: string | undefined }) {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -95,9 +104,15 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
 
   const [importing, setImporting] = useState(false)
 
-  const apply = useCallback((request: Promise<Task[]>) => {
+  const apply = useCallback(async (request: Promise<Task[]>) => {
     setError('')
-    return request.then(setTasks, (reason: unknown) => setError(String(reason)))
+    try {
+      setTasks(await request)
+      return true
+    } catch (reason) {
+      setError(String(reason))
+      return false
+    }
   }, [])
   const importIssues = useCallback((id: string) => {
     setImporting(true)
@@ -137,7 +152,7 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
     <dialog ref={dialog} aria-label="Tableau de tâches">
       <h2>Tâches</h2>
       {!projectId && <p>Aucun projet sélectionné.</p>}
-      {projectId && <NewTaskForm onCreate={(draft) => void apply(window.wu.invoke('tasks:create', { projectId, ...draft }))} />}
+      {projectId && <TaskForm onSave={(draft) => apply(window.wu.invoke('tasks:create', { projectId, ...draft }))} />}
       {projectId && (
         <button type="button" onClick={() => importIssues(projectId)} disabled={importing}>
           Importer les issues GitHub
@@ -151,7 +166,7 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
           <ul>
             {tasks.filter((task) => task.status === status).map((task) => (
               <TaskCard key={task.id} task={task} lastMove={lastMove} onMove={(direction) => move(task, direction)}
-                onSave={(draft) => void apply(window.wu.invoke('tasks:update', { projectId, id: task.id, ...draft }))} />
+                onSave={(draft) => apply(window.wu.invoke('tasks:update', { projectId, id: task.id, ...draft }))} />
             ))}
           </ul>
         </section>

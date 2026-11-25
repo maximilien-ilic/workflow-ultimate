@@ -104,3 +104,93 @@ test('créer, éditer et déplacer une tâche sans la souris', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('corriger un titre refusé à la création sans perdre la saisie', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'wu-e2e-tasks-create-')))
+  const { app, page } = await launchWithProject(dir)
+  try {
+    const board = page.getByRole('dialog', { name: 'Tableau de tâches' })
+    const todo = board.getByRole('region', { name: 'À faire', exact: true })
+    const title = board.getByRole('textbox', { name: 'Nouvelle tâche' })
+    const invalidTitle = 'A'.repeat(257)
+
+    await page.keyboard.press('Control+Shift+K')
+    await title.fill(invalidTitle)
+    await title.press('Enter')
+    await expect(board.getByRole('alert')).toContainText('tasks:create')
+    await expect(title).toHaveValue(invalidTitle)
+    await expect(title).toBeFocused()
+    await expect(todo.getByRole('listitem')).toHaveCount(0)
+
+    await page.keyboard.press('End')
+    await page.keyboard.press('Backspace')
+    // Deux activations dans le même tour garantissent que la seconde précède la réponse IPC.
+    await board.getByRole('button', { name: 'Ajouter' }).evaluate((button: HTMLButtonElement) => {
+      button.click()
+      button.click()
+    })
+    await expect(todo.getByText(invalidTitle.slice(1), { exact: true })).toBeVisible()
+    await expect(title).toHaveValue('')
+    await expect(title).toBeFocused()
+    await expect(board.getByRole('alert')).toBeHidden()
+
+    await page.reload()
+    await expect(page.getByRole('treeitem', { selected: true })).toBeVisible()
+    await page.keyboard.press('Control+Shift+K')
+    await expect(todo.getByRole('listitem')).toHaveCount(1)
+  } finally {
+    await app.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('corriger une description refusée en gardant les deux champs et le focus', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'wu-e2e-tasks-update-')))
+  const { app, page } = await launchWithProject(dir)
+  try {
+    const board = page.getByRole('dialog', { name: 'Tableau de tâches' })
+    const newTitle = board.getByRole('textbox', { name: 'Nouvelle tâche' })
+    const title = board.getByRole('textbox', { name: 'Titre de la tâche' })
+    const body = board.getByRole('textbox', { name: 'Description de la tâche' })
+    const invalidBody = 'B'.repeat(20_001)
+
+    await page.keyboard.press('Control+Shift+K')
+    await newTitle.fill('Carte')
+    await newTitle.press('Enter')
+    await board.getByRole('button', { name: 'Éditer « Carte »' }).press('Enter')
+    await title.fill('Carte corrigée')
+    await body.fill(invalidBody)
+    await page.keyboard.press('Tab')
+    const save = board.getByRole('button', { name: 'Enregistrer' })
+    await expect(save).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(board.getByRole('alert')).toContainText('tasks:update')
+    await expect(title).toHaveValue('Carte corrigée')
+    await expect(body).toHaveValue(invalidBody)
+    await expect(save).toBeFocused()
+
+    await page.keyboard.press('Shift+Tab')
+    await expect(body).toBeFocused()
+    await page.keyboard.press('Control+End')
+    await page.keyboard.press('Backspace')
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Enter')
+    await expect(board.getByRole('button', { name: 'Éditer « Carte corrigée »' })).toBeFocused()
+    await expect(title).toBeHidden()
+    await expect(board.getByText(invalidBody.slice(1), { exact: true })).toBeVisible()
+    await expect(board.getByRole('alert')).toBeHidden()
+
+    await page.keyboard.press('Enter')
+    await title.fill('Carte finale')
+    // Le focus quitte l'éditeur avant que le processus principal puisse répondre.
+    await newTitle.evaluate((input: HTMLInputElement) => {
+      (document.activeElement as HTMLInputElement).form!.requestSubmit()
+      input.focus()
+    })
+    await expect(board.getByRole('button', { name: 'Éditer « Carte finale »' })).toBeVisible()
+    await expect(newTitle).toBeFocused()
+  } finally {
+    await app.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
