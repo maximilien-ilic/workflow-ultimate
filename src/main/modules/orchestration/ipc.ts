@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { getProject } from '../projects/registry'
 import { handle } from '../shell/ipc'
+import { syncIssues } from './github-sync'
 import { createTasks } from './tasks'
 
 export function registerTaskHandlers(db: DatabaseSync): void {
@@ -23,5 +24,9 @@ export function registerTaskHandlers(db: DatabaseSync): void {
   handle('tasks:move', ({ projectId, id, status }) => {
     tasks.move(projectId, id, status)
     return listOf(projectId)
+  })
+  handle('tasks:importIssues', async ({ projectId }) => {
+    await syncIssues(db, projectId)
+    return tasks.list(projectId)
   })
 }

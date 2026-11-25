@@ -77,6 +77,7 @@ test('créer, éditer et déplacer une tâche sans la souris', async () => {
     await expect(column('À faire')).toContainText('Écrire le test')
 
     await page.keyboard.press('Tab') // Ajouter
+    await page.keyboard.press('Tab') // Importer les issues GitHub
     await page.keyboard.press('Tab') // Éditer
     await page.keyboard.press('Tab')
     await expect(board.getByRole('button', { name: 'Déplacer « Écrire le test » vers En cours' })).toBeFocused()

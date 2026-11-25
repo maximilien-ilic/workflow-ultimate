@@ -1,0 +1,7 @@
+{
+  "count": 2,
+  "issues": [
+    {"body":"Corps de l’issue ouverte.","number":12,"state":"open","title":"Ajouter le tableau","url":"https://github.com/example/projet/issues/12"},
+    {"body":"","number":7,"state":"closed","title":"Corriger le démarrage","url":"https://github.com/example/projet/issues/7"}
+  ]
+}

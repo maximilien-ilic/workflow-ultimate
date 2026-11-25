@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createPullRequest, readPullRequest } from './pull-request'
+import { createPullRequest, gh, GH_MAX_OUTPUT_BYTES, readPullRequest } from './pull-request'
 
 let repo: string
 let publishedSha: string
@@ -133,5 +133,12 @@ it.each(['CLOSED', 'MERGED'])('permet une nouvelle PR après une PR %s', async (
   await expect(readPullRequest(repo)).resolves.toMatchObject({ kind: 'draft', branch: 'feat/42-contexte' })
   await expect(createPullRequest(repo, 'feat/42-contexte', 'Nouvelle PR', '')).resolves.toEqual({
     url: 'https://github.com/example/projet/pull/10',
+  })
+})
+
+it('signale clairement une sortie de gh au-delà de la limite', async () => {
+  writeFileSync(join(repo, 'gh'), `#!/bin/sh\nhead -c ${GH_MAX_OUTPUT_BYTES + 1} /dev/zero\n`, { mode: 0o700 })
+  await expect(gh(repo, ['issue', 'list'])).resolves.toMatchObject({
+    error: `La sortie de gh dépasse la limite de ${GH_MAX_OUTPUT_BYTES} octets.`,
   })
 })
