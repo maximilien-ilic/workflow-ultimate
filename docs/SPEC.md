@@ -66,7 +66,7 @@ Modules prévus **après la v1** (ne pas coder avant) : `browser` (navigateur in
 ### review
 - Diff du worktree par rapport à sa base (éditeur Monaco en mode diff), fichier par fichier, avec un raccourci pour passer au fichier modifié suivant.
 - Commentaire sur une ligne, puis envoi de tous les commentaires à l'agent en un seul message.
-- Commit, push et création de PR (`gh pr create`) depuis l'appli ; affichage de l'état CI de la PR.
+- Commit des fichiers sélectionnés avec un message saisi ou demandé à un agent, push et création de PR (`gh pr create`) depuis l'appli. Le push cible la branche courante et son upstream. Le panneau affiche l'état CI de la PR.
 
 ### orchestration
 - Tableau de tâches par projet (À faire / En cours / En revue / Fini), qu'on peut importer depuis les issues GitHub.

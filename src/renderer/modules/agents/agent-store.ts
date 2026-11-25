@@ -109,14 +109,14 @@ export const stateLabel: Record<AgentState, { icon: string; text: string }> = {
 export async function startAgent(
   cwd: string,
   title: string,
-  opts: { agent?: AgentSession['agent']; resumeOf?: string } = {},
+  opts: { agent?: AgentSession['agent']; resumeOf?: string; prompt?: string } = {},
 ): Promise<string> {
   const { agent = 'claude-code', resumeOf } = opts
   const terminalId = crypto.randomUUID()
   const size = { cols: 120, rows: 30 }
   const session = resumeOf
     ? await window.wu.invoke('agents:resume', { sessionId: resumeOf, terminalId, ...size })
-    : await window.wu.invoke('agents:start', { terminalId, cwd, agent, ...size })
+    : await window.wu.invoke('agents:start', { terminalId, cwd, agent, prompt: opts.prompt, ...size })
   agentStore.started(terminalId, { sessionId: session.id, agent: session.agent, title }, session.state)
   return terminalId
 }

@@ -1,22 +1,11 @@
 import type { WebContents } from 'electron'
 import type { HostEvent } from '../../../shared/pty-protocol'
 import type { TerminalEvent } from '../../../shared/ipc'
+import { redirectsGitRepository } from '../projects/git-env'
 import { handle } from '../shell/ipc'
 import { FlowControl } from './flow-control'
 import { Pending, PendingTimeout } from './pending'
 import type { PtyHost } from './pty-host'
-
-// Variables git qui redirigent vers un autre dépôt : le shell d'un worktree doit voir son propre dépôt.
-const GIT_REDIRECTS = new Set([
-  'GIT_DIR',
-  'GIT_WORK_TREE',
-  'GIT_INDEX_FILE',
-  'GIT_COMMON_DIR',
-  'GIT_OBJECT_DIRECTORY',
-  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-  'GIT_NAMESPACE',
-  'GIT_PREFIX',
-])
 
 // Variables qu'un shell ne doit pas hériter d'Electron (sinon `node` ou `electron` lancés dedans se comportent mal),
 // ni du lancement de l'appli (redirections git).
@@ -27,8 +16,7 @@ export function shellEnv(env: NodeJS.ProcessEnv = process.env): Record<string, s
       value !== undefined &&
       !key.startsWith('ELECTRON_') &&
       key !== 'CHROME_DESKTOP' &&
-      !GIT_REDIRECTS.has(key) &&
-      !/^GIT_CONFIG_(PARAMETERS|COUNT|KEY_\d+|VALUE_\d+)$/.test(key) // config git injectée par l'environnement
+      !redirectsGitRepository(key)
     )
       clean[key] = value
   return { ...clean, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'workflow-ultimate' }
