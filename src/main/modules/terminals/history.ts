@@ -1,4 +1,13 @@
-import { mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { BrowserWindow } from 'electron'
 import type { z } from 'zod'
@@ -15,6 +24,7 @@ import type { registerTerminalHandlers } from './ipc'
 const PRIVATE_FILE_MODE = 0o600
 const PRIVATE_DIRECTORY_MODE = 0o700
 const CLOSE_TIMEOUT_MS = 3_000
+const LAYOUT_FILE = 'layout.json'
 
 function readSaved<T>(path: string, schema: z.ZodType<T>): T | undefined {
   try {
@@ -70,14 +80,28 @@ function readHistories(file: (id: string) => string, panes: Map<string, string>)
   return restored
 }
 
+function removeOrphanedHistories(directory: string, panes: ReadonlyMap<string, string>): void {
+  try {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isDirectory() || entry.name === LAYOUT_FILE) continue
+      const id = entry.name.replace(/(?:\.json)?\.tmp$|\.json$/, '')
+      if (id !== entry.name && !panes.has(id)) rmSync(join(directory, entry.name), { force: true })
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+      console.error('Nettoyage des historiques de terminaux impossible', error)
+  }
+}
+
 export function registerTerminalHistory(
   directory: string,
   terminals: Pick<ReturnType<typeof registerTerminalHandlers>, 'isOpen' | 'processId'>,
 ) {
-  const layoutFile = join(directory, 'layout.json')
+  const layoutFile = join(directory, LAYOUT_FILE)
   const historyFile = (id: string) => join(directory, `${id}.json`)
   let layout = readSaved(layoutFile, terminalLayoutSchema) ?? { tabs: [], activeTab: null }
   let panes = paneDirectories(layout)
+  removeOrphanedHistories(directory, panes)
   const lastDirectories = new Map<string, string>()
   // Le rejeu du renderer ajoute le flux du PTY courant à cette base fixe, y compris après un split.
   const restored = readHistories(historyFile, panes)
@@ -98,6 +122,7 @@ export function registerTerminalHistory(
       lastDirectories.delete(id)
       rmSync(historyFile(id), { force: true })
       rmSync(`${historyFile(id)}.tmp`, { force: true })
+      rmSync(join(directory, `${id}.tmp`), { force: true })
     }
     writeSaved(layoutFile, layout)
     return null
