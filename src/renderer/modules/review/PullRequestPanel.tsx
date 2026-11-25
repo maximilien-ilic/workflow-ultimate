@@ -20,7 +20,10 @@ export function PullRequestPanel({ projectId, worktreePath }: { projectId: strin
     refreshInProgress.current = true
     setRefreshing(true)
     try {
-      setContext(await window.wu.invoke('review:pr', { projectId, worktreePath }))
+      const next = await window.wu.invoke('review:pr', { projectId, worktreePath })
+      setContext(next)
+      // Une fois la PR affichée, sa fermeture doit rendre le formulaire accessible à nouveau.
+      if (next.kind === 'existing') setCreated((previous) => previous?.url === next.url ? undefined : previous)
       setError('')
     } catch (cause) {
       setError(String(cause))
