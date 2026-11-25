@@ -35,15 +35,17 @@ export type SpawnSpec = {
 }
 
 // Lancement d'un processus dans un terminal (shell ou agent) ; `onExit` permet aux agents de suivre la fin.
+type ExitListener = (id: string, exitCode: number) => void
 export type Terminals = {
   spawn(spec: SpawnSpec): Promise<number>
   writeConfirmed(id: string, owner: WebContents, data: string): Promise<void>
-  onExit(listener: (id: string, exitCode: number) => void): void
+  onExit(listener: ExitListener): void
 }
 
-export function registerTerminalHandlers(host: PtyHost): Terminals {
-  const exitListeners: ((id: string, exitCode: number) => void)[] = []
+export function registerTerminalHandlers(host: PtyHost) {
+  const exitListeners: ExitListener[] = []
   const owners = new Map<string, WebContents>() // terminal → fenêtre qui reçoit sa sortie
+  const processIds = new Map<string, number>()
   const releasing = new Set<string>() // lancements expirés, en attente de fermeture confirmée
   const starting = new Set<string>() // lancements en cours (pas encore confirmés)
   const flow = new FlowControl()
@@ -67,6 +69,7 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
     if (event.type === 'closed') {
       releasing.delete(event.id)
       owners.delete(event.id)
+      processIds.delete(event.id)
       flow.forget(event.id)
       return
     }
@@ -74,6 +77,7 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
     if (event.type === 'data' && flow.onData(event.id, event.data.length) === 'pause')
       host.send({ type: 'pause', id: event.id })
     if (event.type === 'exit') {
+      processIds.delete(event.id)
       flow.forget(event.id)
       for (const listener of exitListeners) listener(event.id, event.exitCode)
     }
@@ -93,6 +97,7 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
     for (const id of owners.keys())
       if (!starting.has(id)) for (const listener of exitListeners) listener(id, -1)
     owners.clear()
+    processIds.clear()
     releasing.clear()
     flow.clear()
   }
@@ -128,7 +133,9 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
     host.send({ type: 'spawn', id, ...process })
     starting.add(id)
     try {
-      return await spawned
+      const pid = await spawned
+      processIds.set(id, pid)
+      return pid
     } catch (error) {
       owners.delete(id) // échec du lancement : pas de faux succès
       if (error instanceof PendingTimeout) {
@@ -178,5 +185,11 @@ export function registerTerminalHandlers(host: PtyHost): Terminals {
     return replay
   })
 
-  return { spawn, writeConfirmed, onExit: (listener) => void exitListeners.push(listener) }
+  return {
+    spawn,
+    writeConfirmed,
+    onExit: (listener: ExitListener) => void exitListeners.push(listener),
+    isOpen: (id: string, sender: WebContents) => owners.get(id) === sender,
+    processId: (id: string) => processIds.get(id),
+  }
 }

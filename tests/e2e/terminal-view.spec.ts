@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron, expect, test, type Page } from '@playwright/test'
@@ -16,6 +16,81 @@ const screenOf = (page: Page, id: string) =>
     (id) => (window as unknown as { __wuTerminalText: (id: string) => string }).__wuTerminalText(id),
     id,
   )
+
+test('restaure les volets, leur historique borné et le dossier courant après arrêt complet', async () => {
+  const repo = join(dir, 'projet')
+  const subfolder = join(repo, 'sous-dossier')
+  mkdirSync(subfolder, { recursive: true })
+  execFileSync('git', ['init', '-q', repo])
+  const launch = () =>
+    _electron.launch({
+      args: ['out/main/index.js'],
+      env: {
+        ...process.env,
+        HOME: dir,
+        SHELL: '/bin/bash',
+        INPUTRC: '/dev/null',
+        XDG_DATA_HOME: join(dir, 'data'),
+        XDG_CONFIG_HOME: join(dir, 'config'),
+      },
+    })
+  const snapshots = join(dir, 'data', 'workflow-ultimate', 'terminal-history')
+  let first: string
+  let second: string
+  const app = await launch()
+  try {
+    const page = await app.firstWindow()
+    await page.evaluate((path) => window.wu.invoke('projects:add', { path }), repo)
+    await page.reload()
+    await page.getByRole('button', { name: 'Terminal dans projet' }).click()
+    const hosts = page.locator('.terminal-host')
+    first = (await hosts.first().getAttribute('data-terminal-id'))!
+    await hosts.first().click()
+    await page.keyboard.type('cd sous-dossier; seq 1 10100; export WU_OLD_SHELL=yes\n')
+    await expect.poll(() => screenOf(page, first)).toMatch(/^10100$/m)
+
+    const snapshot = join(snapshots, `${first}.json`)
+    await expect
+      .poll(() => (existsSync(snapshot) ? readFileSync(snapshot, 'utf8') : ''), { timeout: 12_000 })
+      .toContain('10100')
+    expect(statSync(snapshot).mode & 0o777).toBe(0o600)
+
+    await page.keyboard.press('Control+Shift+D')
+    await expect(hosts).toHaveCount(2)
+    second = (await hosts.last().getAttribute('data-terminal-id'))!
+    await hosts.last().click()
+    await page.keyboard.type('echo sortie-$((7*6))\n')
+    await expect.poll(() => screenOf(page, second)).toMatch(/^sortie-42$/m)
+  } finally {
+    await app.close()
+  }
+
+  const restarted = await launch()
+  try {
+    const page = await restarted.firstWindow()
+    await expect(page.locator('.terminal-host')).toHaveCount(2)
+    await expect.poll(() => screenOf(page, first)).toContain('session restaurée')
+    const history = await screenOf(page, first)
+    expect(history).toMatch(/^10100$/m)
+    expect(history).not.toMatch(/^1$/m)
+    expect(history.match(/^\d+$/gm)!.length).toBeLessThanOrEqual(10_000)
+    await expect.poll(() => screenOf(page, second)).toMatch(/^sortie-42$/m)
+    await page.locator(`[data-terminal-id="${first}"]`).click()
+    await page.keyboard.type('pwd; echo nouveau-${WU_OLD_SHELL:-shell}\n')
+    await expect.poll(() => screenOf(page, first)).toMatch(/^nouveau-shell$/m)
+    expect((await screenOf(page, first)).split('\n')).toContain(subfolder)
+    await page.reload()
+    await expect.poll(() => screenOf(page, first)).toMatch(/^nouveau-shell$/m)
+    expect((await screenOf(page, first)).match(/session restaurée/g)).toHaveLength(1)
+    expect((await screenOf(page, first)).match(/^10100$/gm)).toHaveLength(1)
+    await page.locator(`[data-terminal-id="${first}"]`).click()
+    await page.keyboard.press('Control+Shift+W')
+    await expect.poll(() => existsSync(join(snapshots, `${first}.json`))).toBe(false)
+    await expect(page.locator('.terminal-host')).toHaveCount(1)
+  } finally {
+    await restarted.close()
+  }
+})
 
 test('ouvrir un terminal, y taper, le découper, survivre au rechargement, fermer un volet', async () => {
   const repo = join(dir, 'mon-projet')
