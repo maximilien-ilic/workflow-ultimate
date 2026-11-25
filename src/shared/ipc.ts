@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { settingsSchema, type Settings } from './settings'
+import { HISTORY_CHARACTERS, type PaneTree } from './terminal-history'
 
 // Contrat unique main ↔ renderer. Pas d'import Node ni DOM ici.
 // Ajouter un canal = un schéma de requête + un type de réponse.
@@ -7,6 +8,37 @@ const absolutePath = z.string().startsWith('/', 'chemin absolu attendu').max(409
 export const maxAgentPromptLength = 20_000
 export const maxWorktreeBranchLength = 200
 const dimension = z.number().int().min(1).max(1000)
+
+const paneTreeSchema: z.ZodType<PaneTree> = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('pane'), id: z.uuid() }).strict(),
+  z.object({
+    type: z.literal('split'),
+    dir: z.enum(['row', 'column']),
+    get a() { return paneTreeSchema },
+    get b() { return paneTreeSchema },
+  }).strict(),
+])
+export const terminalLayoutSchema = z.object({
+  tabs: z.array(z.object({
+    id: z.uuid(),
+    title: z.string(),
+    cwd: absolutePath,
+    tree: paneTreeSchema,
+    activePane: z.uuid(),
+  }).strict()),
+  activeTab: z.uuid().nullable(),
+}).strict()
+
+const terminalScreenSchema = z.object({
+  data: z.string().max(HISTORY_CHARACTERS),
+  cols: dimension,
+  rows: dimension,
+}).strict()
+export const terminalHistorySchema = terminalScreenSchema.extend({ cwd: absolutePath })
+
+export type TerminalLayout = z.infer<typeof terminalLayoutSchema>
+export type TerminalHistory = z.infer<typeof terminalHistorySchema>
+
 // Colonnes du tableau de tâches, dans l'ordre d'affichage.
 export const taskStatuses = ['todo', 'doing', 'review', 'done'] as const
 // Partagée avec l'import des issues GitHub : une tâche importée doit rester éditable.
@@ -50,6 +82,11 @@ export const ipcRequestSchemas = {
   'terminal:attach': z.object({ id: z.uuid() }).strict(),
   // Accusé de réception : nombre de caractères affichés par le renderer (contrôle de flux).
   'terminal:ack': z.object({ id: z.uuid(), chars: z.number().int().min(0).max(10_000_000) }).strict(),
+  'terminal:workspace': z.object({}).strict(),
+  'terminal:saveLayout': terminalLayoutSchema,
+  'terminal:loadHistory': z.object({ id: z.uuid() }).strict(),
+  'terminal:saveHistory': terminalScreenSchema.extend({ id: z.uuid() }),
+  'terminal:historyFlushed': z.object({}).strict(),
   // Lien cliqué dans un terminal : ouvert dans le navigateur du système, http(s) seulement.
   'shell:openUrl': z.object({ url: z.url({ protocol: /^https?$/ }).max(4096) }).strict(),
   // Lance l'agent dans un nouveau terminal `terminalId` (le renderer s'y rattache ensuite).
@@ -202,6 +239,11 @@ interface IpcResponses {
   'terminal:kill': null
   'terminal:attach': { data: string; offset: number }
   'terminal:ack': null
+  'terminal:workspace': { layout: TerminalLayout; livePanes: string[]; historyPanes: string[] }
+  'terminal:saveLayout': null
+  'terminal:loadHistory': TerminalHistory | null
+  'terminal:saveHistory': null
+  'terminal:historyFlushed': null
   'shell:openUrl': null
   'agents:start': AgentSession
   'agents:resume': AgentSession

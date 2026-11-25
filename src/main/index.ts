@@ -15,6 +15,7 @@ import { registerProjectHandlers } from './modules/projects/ipc'
 import { registerReviewHandlers } from './modules/review/ipc'
 import { registerTaskHandlers } from './modules/orchestration/ipc'
 import { registerTerminalHandlers } from './modules/terminals/ipc'
+import { registerTerminalHistory } from './modules/terminals/history'
 import { startPtyHost } from './modules/terminals/pty-host'
 import { registerSettings } from './modules/shell/settings'
 import { parseAction, quickLaunchActionId, registerSingleInstance, runMainAction } from './modules/shell/single-instance'
@@ -49,6 +50,7 @@ void app.whenReady().then(async () => {
   registerProjectHandlers(db)
   const ptyHost = startPtyHost()
   const terminals = registerTerminalHandlers(ptyHost)
+  const flushTerminalHistory = registerTerminalHistory(join(dataDir(), 'terminal-history'), terminals)
 
   // Agents : les hooks appellent wu-notify avec le Node embarqué (ELECTRON_RUN_AS_NODE) ; il écrit sur le socket.
   // Toute erreur de socket (EACCES sur XDG_RUNTIME_DIR, chemin occupé…) est isolée : la fenêtre s'ouvre,
@@ -86,7 +88,9 @@ void app.whenReady().then(async () => {
     ptyHost.stop()
     db.close()
   })
-  const onAgentStateChange = registerAgentDesktop(createMainWindow())
+  const window = createMainWindow()
+  const onAgentStateChange = registerAgentDesktop(window)
+  flushTerminalHistory(window)
   if (parseAction(process.argv) === quickLaunchActionId) runMainAction(quickLaunchActionId)
 })
 void app.whenReady().then(registerGlobalShortcuts)

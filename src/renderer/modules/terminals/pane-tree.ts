@@ -1,10 +1,5 @@
-// Disposition des terminaux d'un onglet : un arbre binaire de splits.
-export type PaneTree =
-  { type: 'pane'; id: string } | { type: 'split'; dir: 'row' | 'column'; a: PaneTree; b: PaneTree }
-
-export function paneIds(tree: PaneTree): string[] {
-  return tree.type === 'pane' ? [tree.id] : [...paneIds(tree.a), ...paneIds(tree.b)]
-}
+import type { PaneTree } from '../../../shared/terminal-history'
+export { paneIds, type PaneTree } from '../../../shared/terminal-history'
 
 export function splitPane(tree: PaneTree, target: string, dir: 'row' | 'column', id: string): PaneTree {
   if (tree.type === 'pane')

@@ -55,7 +55,7 @@ Modules prévus **après la v1** (ne pas coder avant) : `browser` (navigateur in
 ### terminals
 - Plusieurs terminaux par worktree, en onglets et en splits horizontaux/verticaux.
 - Rendu GPU (addon WebGL de xterm.js), liens cliquables, recherche dans le scrollback, images (sixel), avec un repli si le GPU est indisponible.
-- Le scrollback survit à un redémarrage de l'appli (10 000 lignes par terminal).
+- L'appli sauvegarde jusqu'à 10 000 lignes par terminal toutes les cinq secondes quand le contenu change et à la fermeture de la fenêtre. Elle restaure les onglets et splits, affiche « session restaurée » et ouvre un nouveau shell dans le dernier dossier sauvegardé. Les fichiers d'historique (permissions 0600) sont supprimés quand on ferme leur volet.
 
 ### agents
 - Lancer Claude Code ou Codex dans un worktree en 1 action (palette ou bouton), avec un prompt initial facultatif.

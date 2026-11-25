@@ -1,4 +1,4 @@
-import type { AgentSession, AgentState } from '../../../shared/ipc'
+import type { AgentSession, AgentState, QuickAgentStarted } from '../../../shared/ipc'
 import { terminalStore } from '../terminals/terminal-store'
 import notificationSoundUrl from '../shell/notification.wav'
 
@@ -103,12 +103,12 @@ export const agentStore = {
   },
 }
 
-window.wu.onQuickAgentStarted((session) => {
+export function attachQuickAgent(session: QuickAgentStarted) {
   const agentName = session.agent === 'claude-code' ? 'Claude' : 'Codex'
   const title = `${agentName} · ${session.cwd.split('/').at(-1)}`
   agentStore.started(session.terminalId, { sessionId: session.id, agent: session.agent, title }, session.state)
   terminalStore.openAttachedTab(session.cwd, title, session.terminalId)
-})
+}
 
 // DESIGN.md §3 : une icône et un libellé pour chaque état (la couleur seule ne suffit pas).
 export const stateLabel: Record<AgentState, { icon: string; text: string }> = {

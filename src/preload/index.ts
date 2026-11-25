@@ -20,6 +20,9 @@ const api = {
     ipcRenderer.on('terminal:event', wrapped)
     return () => ipcRenderer.removeListener('terminal:event', wrapped)
   },
+  onTerminalHistoryFlush: (listener: () => void): void => {
+    ipcRenderer.on('terminal:flush-history', () => listener())
+  },
   onAgentDesktopEvent: (listener: (event: AgentDesktopEvent) => void): void => {
     ipcRenderer.on('agents:desktop', (_event, event: AgentDesktopEvent) => listener(event))
   },

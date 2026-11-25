@@ -2,11 +2,29 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { QuickLaunch } from './modules/agents/QuickLaunch'
+import { attachQuickAgent } from './modules/agents/agent-store'
+import { startTerminalHistory } from './modules/terminals/terminal-history'
+import { restoreTerminalWorkspace } from './modules/terminals/terminal-store'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root introuvable dans index.html')
-createRoot(root).render(
-  <StrictMode>
-    {window.location.hash === '#quick-launch' ? <QuickLaunch /> : <App />}
-  </StrictMode>,
-)
+const renderer = createRoot(root)
+if (window.location.hash === '#quick-launch') {
+  renderer.render(
+    <StrictMode>
+      <QuickLaunch />
+    </StrictMode>,
+  )
+} else {
+  startTerminalHistory()
+  const terminalWorkspace = restoreTerminalWorkspace()
+  // Attendre la disposition restaurée avant d'y ajouter l'onglet d'un lancement rapide.
+  window.wu.onQuickAgentStarted((session) => void terminalWorkspace.then(() => attachQuickAgent(session)))
+  void terminalWorkspace.then(() => {
+    renderer.render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    )
+  })
+}
