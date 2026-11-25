@@ -1,9 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite'
+import type { AgentSessions } from '../agents/sessions'
 import { getProject } from '../projects/registry'
 import { listWorktrees } from '../projects/worktrees'
 import { handle } from '../shell/ipc'
 import { changedFiles, fileVersions, insideWorktree } from './changes'
 import { commitChanges, pushBranch } from './commit'
+import { createReviewComments } from './comments'
 import { createPullRequest, readPullRequest } from './pull-request'
 
 // Le renderer désigne un worktree ; on vérifie qu'il appartient bien à ce projet avant toute lecture.
@@ -14,7 +16,22 @@ async function checkedWorktree(db: DatabaseSync, projectId: string, worktreePath
   return worktreePath
 }
 
-export function registerReviewHandlers(db: DatabaseSync): void {
+export function registerReviewHandlers(db: DatabaseSync, agents: AgentSessions): void {
+  const comments = createReviewComments(db)
+  handle('review:comments', async (target) => {
+    await checkedWorktree(db, target.projectId, target.worktreePath)
+    return comments.list(target)
+  })
+  handle('review:addComment', async ({ projectId, worktreePath, path, line, body }) => {
+    const target = { projectId, worktreePath: await checkedWorktree(db, projectId, worktreePath) }
+    comments.add(target, { path: insideWorktree(target.worktreePath, path), line, body })
+    return comments.list(target)
+  })
+  handle('review:sendComments', async ({ projectId, worktreePath, sessionId }, event) => {
+    const target = { projectId, worktreePath: await checkedWorktree(db, projectId, worktreePath) }
+    await comments.send(target, (message) => agents.writeReview(sessionId, target.worktreePath, event.sender, message))
+    return comments.list(target)
+  })
   handle('review:changes', async ({ projectId, worktreePath }) =>
     changedFiles(await checkedWorktree(db, projectId, worktreePath)),
   )

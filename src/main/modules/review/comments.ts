@@ -1,0 +1,50 @@
+import type { DatabaseSync } from 'node:sqlite'
+import type { ReviewComment } from '../../../shared/ipc'
+
+type Worktree = { projectId: string; worktreePath: string }
+type Draft = Pick<ReviewComment, 'path' | 'line' | 'body'>
+
+const MAX_WRITE_BYTES = 64 * 1024
+const singleLine = (value: string) => value.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, ' ')
+
+function agentMessage(comments: ReviewComment[]): string {
+  const lines = comments.map(({ path, line, body }) => `${singleLine(path)}:${line} — ${singleLine(body)}`)
+  // Les retours à la ligne restent dans le collage. Une seule touche Entrée soumet le lot.
+  return `\x1b[200~Commentaires de revue :\n${lines.join('\n')}\x1b[201~\r`
+}
+
+export function createReviewComments(db: DatabaseSync) {
+  const sending = new Set<string>()
+  const select = db.prepare(`
+    SELECT id, path, line, body, sent_at AS sentAt FROM review_comments
+    WHERE project_id = ? AND worktree_path = ? ORDER BY id
+  `)
+  const insert = db.prepare(`
+    INSERT INTO review_comments (project_id, worktree_path, path, line, body) VALUES (?, ?, ?, ?, ?)
+  `)
+  const list = ({ projectId, worktreePath }: Worktree) => select.all(projectId, worktreePath) as ReviewComment[]
+  return {
+    list,
+    add({ projectId, worktreePath }: Worktree, { path, line, body }: Draft) {
+      insert.run(projectId, worktreePath, path, line, body)
+    },
+    async send(target: Worktree, write: (message: string) => Promise<void>): Promise<number> {
+      const key = JSON.stringify([target.projectId, target.worktreePath])
+      if (sending.has(key)) throw new Error('Un envoi est déjà en cours dans ce worktree.')
+      const pending = list(target).filter(({ sentAt }) => sentAt === null)
+      if (!pending.length) return 0
+      const message = agentMessage(pending)
+      if (Buffer.byteLength(message) > MAX_WRITE_BYTES) throw new Error('Le lot de commentaires dépasse 64 Kio.')
+      sending.add(key)
+      try {
+        await write(message)
+        const ids = pending.map(({ id }) => id)
+        db.prepare(`UPDATE review_comments SET sent_at = ? WHERE id IN (${ids.map(() => '?').join(',')})`)
+          .run(Date.now(), ...ids)
+        return ids.length
+      } finally {
+        sending.delete(key)
+      }
+    },
+  }
+}

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
+import type { AgentSessions } from './sessions'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const handlers = new Map<string, (event: unknown, raw: unknown) => Promise<unknown>>()
@@ -25,16 +26,36 @@ const size = { cols: 80, rows: 24 }
 let dir: string
 let db: DatabaseSync
 const spawn = vi.fn()
+const writeConfirmed = vi.fn()
+let agents: AgentSessions
 beforeEach(() => {
   handlers.clear()
   spawn.mockReset()
+  writeConfirmed.mockReset()
   dir = mkdtempSync(join(tmpdir(), 'wu-sessions-'))
   db = openDatabase(join(dir, 'app.db'), migrations)
-  registerAgentHandlers(db, { spawn, onExit: () => {} } as never, {
+  agents = registerAgentHandlers(db, { spawn, writeConfirmed, onExit: () => {} } as never, {
     notify: { node: '/n', script: '/s' },
     socketPath: '/tmp/x.sock',
     bins: { 'claude-code': 'claude', codex: 'codex' },
   })
+})
+
+it('remet un message de revue uniquement à un agent disponible dans le même worktree', async () => {
+  spawn.mockResolvedValue(1)
+  const terminalId = crypto.randomUUID()
+  const session = (await call('agents:start', { terminalId, cwd: dir, agent: 'claude-code', ...size })) as { id: string }
+  const owner = event.sender as never
+  const message = 'Commentaires'
+  await expect(agents.writeReview(session.id, dir, owner, message)).rejects.toThrow(/agent disponible/)
+  const hook = { agent: 'claude-code' as const, sessionId: session.id, ts: Date.now() }
+  agents.onSocketEvent({ ...hook, event: { type: 'prompt-submitted' } })
+  agents.onSocketEvent({ ...hook, event: { type: 'turn-finished' } })
+  await expect(agents.writeReview(session.id, '/autre', owner, message)).rejects.toThrow(/agent disponible/)
+  await expect(agents.writeReview(session.id, dir, {} as never, message)).rejects.toThrow(/agent disponible/)
+  expect(writeConfirmed).not.toHaveBeenCalled()
+  await agents.writeReview(session.id, dir, owner, message)
+  expect(writeConfirmed).toHaveBeenCalledExactlyOnceWith(terminalId, owner, message)
 })
 afterEach(() => {
   db.close()

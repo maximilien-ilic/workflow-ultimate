@@ -49,7 +49,7 @@ test('Ctrl+Shift+G affiche les fichiers modifiés et leur diff, Alt+↓ passe au
 
   await page.keyboard.press('Control+Shift+G')
   const review = page.getByRole('dialog', { name: 'Diff du worktree' })
-  await expect(review.getByRole('heading')).toHaveText('Diff par rapport à main')
+  await expect(review.getByRole('heading', { level: 2 })).toHaveText('Diff par rapport à main')
   const files = review.getByRole('list', { name: 'Fichiers modifiés' }).getByRole('listitem')
   await expect(files).toHaveText(['M calc.ts', 'A nouveau.ts', 'D vieux.md'])
 

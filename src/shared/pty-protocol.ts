@@ -11,7 +11,7 @@ export type HostRequest =
       cols: number
       rows: number
     }
-  | { type: 'write'; id: string; data: string }
+  | { type: 'write'; id: string; data: string; receipt?: string }
   | { type: 'resize'; id: string; cols: number; rows: number }
   // Ferme le terminal : termine le processus s'il tourne, puis libère son tampon dès sa fin.
   | { type: 'kill'; id: string; expiredSpawn?: true }
@@ -28,6 +28,7 @@ export type HostEvent =
   | { type: 'exit'; id: string; exitCode: number; signal: number | null }
   // Les derniers caractères (au plus la taille du tampon), jusqu'à `offset` inclus.
   | { type: 'replay'; id: string; data: string; offset: number }
-  | { type: 'error'; id: string; request: HostRequest['type']; message: string }
+  | { type: 'written'; id: string; receipt: string }
+  | { type: 'error'; id: string; request: HostRequest['type']; message: string; receipt?: string }
   // Le pty-host confirme que ce terminal est absent, après fermeture ou échec du lancement.
   | { type: 'closed'; id: string }

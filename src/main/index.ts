@@ -45,7 +45,6 @@ void app.whenReady().then(async () => {
     return
   }
   registerProjectHandlers(db)
-  registerReviewHandlers(db)
   const ptyHost = startPtyHost()
   const terminals = registerTerminalHandlers(ptyHost)
 
@@ -69,6 +68,7 @@ void app.whenReady().then(async () => {
       codex: process.env['WU_CODEX_BIN'] || 'codex',
     },
   })
+  registerReviewHandlers(db, agents)
   const socket = socketPath
     ? await startAgentSocket({
         path: socketPath,
