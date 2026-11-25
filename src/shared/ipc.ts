@@ -5,6 +5,10 @@ import { settingsSchema, type Settings } from './settings'
 // Ajouter un canal = un schéma de requête + un type de réponse.
 const absolutePath = z.string().startsWith('/', 'chemin absolu attendu').max(4096)
 const dimension = z.number().int().min(1).max(1000)
+// Colonnes du tableau de tâches, dans l'ordre d'affichage.
+export const taskStatuses = ['todo', 'doing', 'review', 'done'] as const
+const taskDraft = { title: z.string().trim().min(1, 'titre vide').max(256), body: z.string().max(20_000) }
+const taskId = z.number().int().positive()
 
 export const ipcRequestSchemas = {
   'app:info': z.object({}).strict(),
@@ -102,7 +106,14 @@ export const ipcRequestSchemas = {
         .strict(),
     })
     .strict(),
+  'tasks:list': z.object({ projectId: z.uuid() }).strict(),
+  'tasks:create': z.object({ projectId: z.uuid(), ...taskDraft }).strict(),
+  'tasks:update': z.object({ projectId: z.uuid(), id: taskId, ...taskDraft }).strict(),
+  'tasks:move': z.object({ projectId: z.uuid(), id: taskId, status: z.enum(taskStatuses) }).strict(),
 } satisfies Record<string, z.ZodType>
+
+export type TaskStatus = (typeof taskStatuses)[number]
+export type Task = { id: number; title: string; body: string; status: TaskStatus }
 
 export type ReviewComment = { id: number; path: string; line: number; body: string; sentAt: number | null }
 export type PullRequestCheck = { name: string; bucket: 'pass' | 'fail' | 'pending' | 'skipping' | 'cancel' }
@@ -188,6 +199,10 @@ interface IpcResponses {
   'review:addComment': ReviewComment[]
   'review:sendComments': ReviewComment[]
   'review:createPr': { url: string }
+  'tasks:list': Task[]
+  'tasks:create': Task[]
+  'tasks:update': Task[]
+  'tasks:move': Task[]
   'diagnostics:report': string
   'settings:get': Settings
   'settings:set': null
