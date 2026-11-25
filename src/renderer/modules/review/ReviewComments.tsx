@@ -5,9 +5,11 @@ import { paneIds } from '../terminals/pane-tree'
 import { terminalStore } from '../terminals/terminal-store'
 
 type Props = { projectId: string; worktreePath: string; filePath?: string; line: number; maxLine?: number }
+type Draft = { line: string; body: string }
 
 export function ReviewComments({ projectId, worktreePath, filePath, line, maxLine }: Props) {
   const [comments, setComments] = useState<ReviewComment[] | null>(null)
+  const [drafts, setDrafts] = useState(() => new Map<string, Draft>())
   const [selectedAgent, setSelectedAgent] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -21,6 +23,7 @@ export function ReviewComments({ projectId, worktreePath, filePath, line, maxLin
   )
   const recipient = agents.find(({ sessionId }) => sessionId === selectedAgent) ?? agents[0]
   const hasPending = comments?.some(({ sentAt }) => sentAt === null)
+  const draft = (filePath && drafts.get(filePath)) || { line: String(line), body: '' }
 
   useEffect(() => {
     let active = true
@@ -47,16 +50,23 @@ export function ReviewComments({ projectId, worktreePath, filePath, line, maxLin
   function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!filePath) return
-    const form = event.currentTarget
-    const data = new FormData(form)
     void run(async () => {
       const result = await window.wu.invoke('review:addComment', {
         projectId, worktreePath, path: filePath,
-        line: Number(data.get('line')), body: String(data.get('body') ?? ''),
+        line: Number(draft.line), body: draft.body,
       })
-      form.reset()
+      setDrafts((previous) => {
+        const next = new Map(previous)
+        next.delete(filePath)
+        return next
+      })
       return result
     })
+  }
+
+  function editDraft(changes: Partial<Draft>) {
+    if (!filePath) return
+    setDrafts((previous) => new Map(previous).set(filePath, { ...draft, ...changes }))
   }
 
   return (
@@ -64,8 +74,14 @@ export function ReviewComments({ projectId, worktreePath, filePath, line, maxLin
       <h3>Commentaires de revue</h3>
       {filePath && maxLine !== undefined && (
         <form key={filePath} onSubmit={add}>
-          <label>Ligne <input key={line} name="line" type="number" defaultValue={line} min={1} max={maxLine} required /></label>
-          <label>Commentaire <textarea name="body" maxLength={4000} required /></label>
+          <label>
+            Ligne <input name="line" type="number" min={1} max={maxLine} required disabled={busy}
+              value={draft.line} onChange={(event) => editDraft({ line: event.target.value })} />
+          </label>
+          <label>
+            Commentaire <textarea name="body" maxLength={4000} required disabled={busy}
+              value={draft.body} onChange={(event) => editDraft({ body: event.target.value })} />
+          </label>
           <button disabled={busy || !comments}>Ajouter le commentaire</button>
         </form>
       )}
