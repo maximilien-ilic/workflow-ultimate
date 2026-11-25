@@ -18,7 +18,7 @@ const pullRequest = z.object({
 })
 const checks = z.array(z.object({ name: z.string(), bucket: z.enum(['pass', 'fail', 'pending', 'skipping', 'cancel']) }))
 
-async function gh(repo: string, args: string[]) {
+export async function gh(repo: string, args: string[]) {
   const env = remoteGitEnv()
   delete env.GH_REPO
   delete env.GH_HOST

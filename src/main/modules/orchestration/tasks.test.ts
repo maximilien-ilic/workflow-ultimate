@@ -26,7 +26,7 @@ it('crée une tâche « À faire » et la liste seulement dans son projet', () =
   tasks.create(PROJECT, { title: 'Écrire le test', body: 'Avant le code.' })
   tasks.create(OTHER_PROJECT, { title: 'Ailleurs', body: '' })
   expect(tasks.list(PROJECT)).toEqual([
-    { id: expect.any(Number), title: 'Écrire le test', body: 'Avant le code.', status: 'todo' },
+    { id: expect.any(Number), title: 'Écrire le test', body: 'Avant le code.', status: 'todo', issueNumber: null, issueUrl: null },
   ])
 })
 
@@ -35,7 +35,9 @@ it('édite et déplace une tâche', () => {
   const created = tasks.create(PROJECT, { title: 'Brouillon', body: '' })
   tasks.update(PROJECT, created.id, { title: 'Titre final', body: 'Détails' })
   tasks.move(PROJECT, created.id, 'review')
-  expect(tasks.list(PROJECT)).toEqual([{ id: created.id, title: 'Titre final', body: 'Détails', status: 'review' }])
+  expect(tasks.list(PROJECT)).toEqual([
+    { id: created.id, title: 'Titre final', body: 'Détails', status: 'review', issueNumber: null, issueUrl: null },
+  ])
 })
 
 it('refuse de modifier la tâche d’un autre projet', () => {

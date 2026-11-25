@@ -39,7 +39,7 @@ it('crée, édite puis déplace une tâche du projet', async () => {
   const [created] = (await invoke('tasks:create', { projectId, title: ' Tâche ', body: '' })) as { id: number }[]
   await invoke('tasks:update', { projectId, id: created!.id, title: 'Renommée', body: 'Corps' })
   await expect(invoke('tasks:move', { projectId, id: created!.id, status: 'doing' })).resolves.toEqual([
-    { id: created!.id, title: 'Renommée', body: 'Corps', status: 'doing' },
+    { id: created!.id, title: 'Renommée', body: 'Corps', status: 'doing', issueNumber: null, issueUrl: null },
   ])
   await expect(invoke('tasks:list', { projectId })).resolves.toHaveLength(1)
 })
@@ -48,6 +48,7 @@ it.each([
   ['un titre vide', 'tasks:create', { projectId, title: '  ', body: '' }],
   ['une colonne inconnue', 'tasks:move', { projectId, id: 1, status: 'archived' }],
   ['un projet qui n’est pas un uuid', 'tasks:list', { projectId: 'x' }],
+  ['un import sans projet valide', 'tasks:importIssues', { projectId: 'x' }],
 ] as const)('rejette %s', async (_label, channel, raw) => {
   await expect(invoke(channel, raw)).rejects.toThrow(/Requête IPC invalide/)
 })
