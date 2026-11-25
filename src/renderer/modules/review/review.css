@@ -33,3 +33,5 @@
   flex: 1;
   min-width: 0;
 }
+.commit-form { display: flex; gap: 8px; align-items: flex-start; padding-top: 8px; }
+.commit-form textarea { flex: 1; min-height: 3em; }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangedFile } from '../../../shared/ipc'
 import { registerCommand } from '../palette/commands'
+import { CommitForm } from './CommitForm'
 import { terminalStore } from '../terminals/terminal-store'
 import './review.css'
 
@@ -84,25 +85,35 @@ export function ReviewView() {
   const [inline, setInline] = useState(false)
   const [message, setMessage] = useState('')
 
-  const open = useCallback(async () => {
-    setMessage('')
-    const wt = await activeWorktree()
-    if (!wt) {
-      setTarget(null)
-      setMessage(MESSAGE_NO_WORKTREE)
-      dialog.current?.showModal()
-      return
-    }
+  const [excluded, setExcluded] = useState<Set<string>>(new Set()) // fichiers décochés pour le commit
+
+  const loadChanges = useCallback(async (wt: { projectId: string; worktreePath: string }) => {
     try {
       const changes = await window.wu.invoke('review:changes', wt)
       setTarget({ ...wt, ...changes })
       setSelected(0)
-      if (changes.files.length === 0) setMessage(`Aucun changement par rapport à ${changes.base}.`)
+      setExcluded(new Set())
+      setMessage(changes.files.length === 0 ? `Aucun changement par rapport à ${changes.base}.` : '')
     } catch (e) {
       setMessage(String(e))
     }
-    dialog.current?.showModal()
   }, [])
+
+  const open = useCallback(async () => {
+    const wt = await activeWorktree()
+    setTarget(null)
+    setMessage(wt ? '' : MESSAGE_NO_WORKTREE)
+    if (wt) await loadChanges(wt)
+    dialog.current?.showModal()
+  }, [loadChanges])
+
+  const toggleIncluded = (path: string) =>
+    setExcluded((previous) => {
+      const next = new Set(previous)
+      if (!next.delete(path)) next.add(path)
+      return next
+    })
+  const checkedPaths = target?.files.filter((f) => !excluded.has(f.path)).map((f) => f.path) ?? []
 
   useEffect(
     () =>
@@ -172,6 +183,12 @@ export function ReviewView() {
         <ul aria-label="Fichiers modifiés">
           {target?.files.map((f, i) => (
             <li key={f.path}>
+              <input
+                type="checkbox"
+                aria-label={`Inclure ${f.path} dans le commit`}
+                checked={!excluded.has(f.path)}
+                onChange={() => toggleIncluded(f.path)}
+              />
               <button
                 aria-current={i === selected}
                 onClick={() => setSelected(i)}
@@ -185,6 +202,15 @@ export function ReviewView() {
         </ul>
         <div ref={host} className="review-editor" />
       </div>
+      {target && target.files.length > 0 && (
+        <CommitForm
+          projectId={target.projectId}
+          worktreePath={target.worktreePath}
+          checkedPaths={checkedPaths}
+          allChecked={excluded.size === 0}
+          onCommitted={() => void loadChanges(target)}
+        />
+      )}
     </dialog>
   )
 }

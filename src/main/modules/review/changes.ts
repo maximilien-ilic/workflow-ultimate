@@ -70,7 +70,7 @@ export async function changedFiles(
 
 const MAX_BYTES = 2 * 1024 * 1024
 
-function insideWorktree(repo: string, path: string): string {
+export function insideWorktree(repo: string, path: string): string {
   const full = resolve(repo, path)
   const rel = relative(repo, full)
   if (isAbsolute(path) || rel.startsWith('..') || isAbsolute(rel))

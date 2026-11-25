@@ -48,5 +48,17 @@ test('Ctrl+Shift+G affiche les fichiers modifiés et leur diff, Alt+↓ passe au
   await page.keyboard.press('Alt+ArrowDown')
   await expect(files.nth(1).getByRole('button')).toHaveAttribute('aria-current', 'true')
   await expect(review.locator('.editor.modified')).toContainText('neuf')
+
+  // Commit partiel : seul vieux.md (décoché) reste non commité. La liste, elle, compare au point de
+  // départ de la branche : les fichiers commités y restent, c'est voulu.
+  await review.getByRole('checkbox', { name: 'Inclure vieux.md dans le commit' }).uncheck()
+  await review.getByRole('textbox', { name: 'Message de commit' }).fill('feat: calcul et nouveau fichier')
+  await review.getByRole('button', { name: 'Commiter' }).click()
+  await expect(review.getByRole('status').last()).toContainText(/Commit [0-9a-f]{7} créé/)
+  expect(git('status', '--porcelain').toString().trim()).toBe('D vieux.md')
+
+  // Sans dépôt distant, l'erreur de git s'affiche telle quelle.
+  await review.getByRole('button', { name: 'Pousser' }).click()
+  await expect(review.getByRole('status').last()).toContainText('origin')
   await app.close()
 })

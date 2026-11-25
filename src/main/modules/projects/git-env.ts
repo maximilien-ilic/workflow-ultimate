@@ -22,3 +22,25 @@ export async function runGit(cwd: string, args: string[], timeout = 10_000): Pro
   })
   return stdout.endsWith('\n') ? stdout.slice(0, -1) : stdout
 }
+
+// Variables qui feraient lire ou configurer un autre dépôt que celui du dossier courant.
+const GIT_REPOSITORY_REDIRECTS = new Set([
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_INDEX_FILE',
+  'GIT_COMMON_DIR',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_NAMESPACE',
+  'GIT_PREFIX',
+])
+
+export const redirectsGitRepository = (name: string) =>
+  GIT_REPOSITORY_REDIRECTS.has(name) || /^GIT_CONFIG_(PARAMETERS|COUNT|KEY_\d+|VALUE_\d+)$/.test(name)
+
+// Pour parler à un dépôt distant : on garde l'authentification de l'utilisateur (GIT_SSH_COMMAND,
+// GIT_ASKPASS…) mais jamais d'invite interactive, qui bloquerait l'appli sans terminal.
+export function remoteGitEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const kept = Object.entries(env).filter(([name]) => !redirectsGitRepository(name))
+  return { ...Object.fromEntries(kept), GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' }
+}
