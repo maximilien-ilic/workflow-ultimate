@@ -39,7 +39,7 @@ export function App() {
         )}
         <TerminalArea />
         <AgentOverview />
-        <ReviewView />
+        <ReviewView projectId={selection?.project.id} worktreePath={selection?.worktree.path} />
         <OrcaImportDialog select={workspace.select} refresh={workspace.refresh} />
       </main>
     </ShellLayout>

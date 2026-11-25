@@ -94,3 +94,49 @@ test('Ctrl+Shift+G affiche les fichiers modifiés et leur diff, Alt+↓ passe au
   expect(git('status', '--porcelain').toString().trim()).toBe('?? tardif.txt')
   await app.close()
 })
+
+test('le diff suit la sélection dans la barre latérale et le worktree du terminal depuis xterm', async () => {
+  const repo = join(dir, 'proj')
+  const linked = join(dir, 'lié')
+  mkdirSync(repo)
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: repo })
+  git('init', '-qb', 'main')
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--allow-empty', '-qm', 'base')
+  git('worktree', 'add', '-qb', 'feat/lié', linked)
+  writeFileSync(join(repo, 'principal.txt'), 'principal\n')
+  writeFileSync(join(linked, 'secondaire.txt'), 'secondaire\n')
+
+  const app = await _electron.launch({
+    args: ['out/main/index.js'],
+    env: { ...process.env, XDG_DATA_HOME: join(dir, 'data'), XDG_CONFIG_HOME: join(dir, 'config') },
+  })
+  try {
+    const page = await app.firstWindow()
+    await page.evaluate((path) => window.wu.invoke('projects:add', { path }), repo)
+    await page.reload()
+    const main = page.getByRole('treeitem', { name: 'main', exact: true })
+    const branch = page.getByRole('treeitem', { name: 'feat/lié', exact: true })
+    const review = page.getByRole('dialog', { name: 'Diff du worktree' })
+    const files = review.getByRole('list', { name: 'Fichiers modifiés' })
+    const close = () => review.getByRole('button', { name: 'Fermer' }).click()
+
+    await branch.click()
+    await page.keyboard.press('Control+Shift+G')
+    await expect(files).toHaveText('A secondaire.txt')
+    await close()
+
+    await main.click()
+    await page.getByRole('button', { name: 'Terminal dans proj' }).click()
+    await branch.click()
+    await page.keyboard.press('Control+Shift+P')
+    await page.getByRole('option', { name: /Voir le diff du worktree/ }).click()
+    await expect(files).toHaveText('A secondaire.txt')
+    await close()
+
+    await page.locator('.terminal-host').first().click()
+    await page.keyboard.press('Control+Shift+G')
+    await expect(files).toHaveText('A principal.txt')
+  } finally {
+    await app.close()
+  }
+})
