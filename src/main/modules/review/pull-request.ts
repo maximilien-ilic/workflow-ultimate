@@ -88,14 +88,13 @@ export async function readPullRequest(repo: string): Promise<PullRequestContext>
   if (!remotes) return { kind: 'unavailable', message: 'Aucun dépôt distant configuré.' }
   const { repository, head } = await pullRequestTarget(repo, branch)
   const result = await gh(repo, [
-    'pr', 'list', `--repo=github.com/${repository}`, `--head=${head}`, '--state=all',
+    'pr', 'list', `--repo=github.com/${repository}`, `--head=${head}`, '--state=open',
     '--json', 'number,title,url,state,headRepository',
   ])
   if (result.code !== 0) throw new Error(result.error)
-  const matching = pullRequest.array().parse(JSON.parse(result.stdout)).filter(({ headRepository }) =>
-    headRepository?.nameWithOwner.toLowerCase() === repository.toLowerCase(),
+  const pr = pullRequest.array().parse(JSON.parse(result.stdout)).find(({ headRepository, state }) =>
+    state === 'OPEN' && headRepository?.nameWithOwner.toLowerCase() === repository.toLowerCase(),
   )
-  const pr = matching.find(({ state }) => state === 'OPEN') ?? matching[0]
   if (!pr) return draftFor(repo, branch)
   const { number, title, url, state } = pr
   return { kind: 'existing', number, title, url, state, checks: await readChecks(repo, url) }
