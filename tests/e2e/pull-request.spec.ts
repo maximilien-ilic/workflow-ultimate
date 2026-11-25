@@ -23,11 +23,22 @@ case "$1 $2" in
     echo '{"object":{"sha":"${git('rev-parse', 'HEAD').toString().trim()}"}}' ;;
   'pr create')
     [ "$5" = '--title=Contexte révisé' ] && [ "$6" = '--body=Closes #42' ] || exit 2
-    touch .git/fake-pr
-    echo https://github.com/example/projet/pull/9 ;;
+    if [ -f .git/fake-closed ]; then
+      rm .git/fake-closed
+      echo 10 > .git/fake-pr
+    else
+      echo 9 > .git/fake-pr
+    fi
+    printf 'https://github.com/example/projet/pull/%s\n' "$(cat .git/fake-pr)" ;;
   'pr list')
     if [ ! -f .git/fake-pr ]; then echo '[]'; exit 0; fi
-    echo '[{"number":9,"title":"Contexte révisé","url":"https://github.com/example/projet/pull/9","state":"OPEN","headRepository":{"nameWithOwner":"example/projet"}}]' ;;
+    state=OPEN
+    if [ -f .git/fake-closed ]; then
+      if [ "$5" = '--state=open' ]; then echo '[]'; exit 0; fi
+      state=CLOSED
+    fi
+    number=$(cat .git/fake-pr)
+    printf '[{"number":%s,"title":"Contexte révisé","url":"https://github.com/example/projet/pull/%s","state":"%s","headRepository":{"nameWithOwner":"example/projet"}}]\n' "$number" "$number" "$state" ;;
   'pr checks')
     if [ -f .git/fake-green ]; then echo '[{"name":"CI","bucket":"pass"}]'
     else echo '[{"name":"CI","bucket":"pending"}]'; exit 8; fi ;;
@@ -69,6 +80,13 @@ esac
     writeFileSync(join(repo, '.git', 'fake-green'), '')
     await panel.getByRole('button', { name: 'Rafraîchir la PR' }).click()
     await expect(panel.getByText('CI · Réussi')).toBeVisible()
+
+    writeFileSync(join(repo, '.git', 'fake-closed'), '')
+    await panel.getByRole('button', { name: 'Rafraîchir la PR' }).click()
+    await expect(title).toHaveValue('feat: contexte')
+    await title.fill('Contexte révisé')
+    await panel.getByRole('button', { name: 'Créer la PR' }).click()
+    await expect(panel.getByRole('link', { name: 'PR #10 · Contexte révisé' })).toBeVisible()
   } finally {
     await app.close()
     rmSync(dir, { recursive: true, force: true })

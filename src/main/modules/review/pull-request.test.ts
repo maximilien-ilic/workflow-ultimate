@@ -118,3 +118,20 @@ it('affiche les erreurs d’authentification', async () => {
   fakeGh('echo "Run gh auth login" >&2; exit 4')
   await expect(readPullRequest(repo)).rejects.toThrow('Run gh auth login')
 })
+
+it.each(['CLOSED', 'MERGED'])('permet une nouvelle PR après une PR %s', async (state) => {
+  fakeGh(`
+    case "$1 $2" in
+      'pr list')
+        if [ "$5" = '--state=open' ]; then echo '[]'; exit 0; fi
+        echo '[{"number":9,"title":"Ancienne PR","url":"https://github.com/example/projet/pull/9","state":"${state}","headRepository":{"nameWithOwner":"example/projet"}}]' ;;
+      'pr checks') echo '[]' ;;
+      'api --hostname') echo '{"object":{"sha":"${publishedSha}"}}' ;;
+      'pr create') echo 'https://github.com/example/projet/pull/10' ;;
+    esac
+  `)
+  await expect(readPullRequest(repo)).resolves.toMatchObject({ kind: 'draft', branch: 'feat/42-contexte' })
+  await expect(createPullRequest(repo, 'feat/42-contexte', 'Nouvelle PR', '')).resolves.toEqual({
+    url: 'https://github.com/example/projet/pull/10',
+  })
+})
