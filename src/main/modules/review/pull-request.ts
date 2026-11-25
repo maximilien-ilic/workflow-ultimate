@@ -6,12 +6,15 @@ import { remoteGitEnv, runGit } from '../projects/git-env'
 
 const exec = promisify(execFile)
 const GH_TIMEOUT_MS = 15_000
+const PUSH_REQUIRED = 'Poussez le commit courant vers GitHub avant de créer sa pull request.'
+const HEAD_REF_PREFIX = 'refs/heads/'
 const pullRequestUrl = z.string().regex(/^https:\/\/github\.com\/[a-z\d_.-]+\/[a-z\d_.-]+\/pull\/\d+$/i)
 const pullRequest = z.object({
   number: z.number().int().positive(),
   title: z.string(),
   url: pullRequestUrl,
   state: z.enum(['OPEN', 'CLOSED', 'MERGED']),
+  headRepository: z.object({ nameWithOwner: z.string() }).nullish(),
 })
 const checks = z.array(z.object({ name: z.string(), bucket: z.enum(['pass', 'fail', 'pending', 'skipping', 'cancel']) }))
 
@@ -19,7 +22,7 @@ async function gh(repo: string, args: string[]) {
   const env = remoteGitEnv()
   delete env.GH_REPO
   delete env.GH_HOST
-  const command = exec('gh', ['pr', ...args], {
+  const command = exec('gh', args, {
     cwd: repo, env: { ...env, GH_PROMPT_DISABLED: '1' }, timeout: GH_TIMEOUT_MS,
   })
   command.child.stdin?.end()
@@ -37,10 +40,34 @@ async function currentBranch(repo: string): Promise<string> {
 }
 
 async function readChecks(repo: string, url: string) {
-  const result = await gh(repo, ['checks', url, '--json', 'name,bucket'])
+  const result = await gh(repo, ['pr', 'checks', url, '--json', 'name,bucket'])
   if (result.stdout && [0, 1, 8].includes(Number(result.code))) return checks.parse(JSON.parse(result.stdout))
   if (/^no checks reported\b/i.test(result.error)) return []
   throw new Error(result.error || 'GitHub ne renvoie aucun état de CI.')
+}
+
+function githubRepository(value: string): string | undefined {
+  const url = URL.parse(value.replace(/^([\w.-]+@github\.com):/i, 'ssh://$1/'))
+  if (!url || url.hostname !== 'github.com' || !['https:', 'ssh:'].includes(url.protocol)) return
+  return /^\/([\w.-]+\/[\w.-]+)\/?$/.exec(url.pathname.replace(/\.git\/?$/, ''))?.[1]
+}
+
+async function pullRequestTarget(repo: string, branch: string) {
+  const localRef = HEAD_REF_PREFIX + branch
+  const [upstream, selectedRepo] = await Promise.all([
+    runGit(repo, ['for-each-ref', '--format=%(upstream:remotename)%00%(upstream:remoteref)', localRef]),
+    gh(repo, ['repo', 'view', '--json', 'url']),
+  ])
+  if (selectedRepo.code !== 0) throw new Error(selectedRepo.error)
+  const repository = githubRepository(z.object({ url: z.string() }).parse(JSON.parse(selectedRepo.stdout)).url)
+  if (!repository) throw new Error('La création de PR est disponible pour les dépôts GitHub.com.')
+  const [remote, configuredRef] = upstream.split('\0')
+  const ref = configuredRef || localRef
+  if (remote === '.' || !ref.startsWith(HEAD_REF_PREFIX)) throw new Error(PUSH_REQUIRED)
+  const pushUrls = await runGit(repo, ['remote', 'get-url', '--push', '--all', '--', remote || 'origin'])
+  if (pushUrls.split('\n').some((url) => githubRepository(url)?.toLowerCase() !== repository.toLowerCase()))
+    throw new Error('Le distant de push doit viser le même dépôt GitHub. La création depuis un fork est hors périmètre.')
+  return { repository, head: ref.slice(HEAD_REF_PREFIX.length) }
 }
 
 async function draftFor(repo: string, branch: string): Promise<PullRequestContext> {
@@ -59,25 +86,44 @@ export async function readPullRequest(repo: string): Promise<PullRequestContext>
   const [branch, remotes] = await Promise.all([currentBranch(repo), runGit(repo, ['remote'])])
   if (!branch) return { kind: 'unavailable', message: 'Sélectionnez un worktree rattaché à une branche.' }
   if (!remotes) return { kind: 'unavailable', message: 'Aucun dépôt distant configuré.' }
-  const result = await gh(repo, ['view', '--json', 'number,title,url,state'])
-  if (result.code === 1 && /^no pull requests found\b/i.test(result.error)) return draftFor(repo, branch)
+  const { repository, head } = await pullRequestTarget(repo, branch)
+  const result = await gh(repo, [
+    'pr', 'list', `--repo=github.com/${repository}`, `--head=${head}`, '--state=all',
+    '--json', 'number,title,url,state,headRepository',
+  ])
   if (result.code !== 0) throw new Error(result.error)
-  const pr = pullRequest.parse(JSON.parse(result.stdout))
-  return { kind: 'existing', ...pr, checks: await readChecks(repo, pr.url) }
+  const matching = pullRequest.array().parse(JSON.parse(result.stdout)).filter(({ headRepository }) =>
+    headRepository?.nameWithOwner.toLowerCase() === repository.toLowerCase(),
+  )
+  const pr = matching.find(({ state }) => state === 'OPEN') ?? matching[0]
+  if (!pr) return draftFor(repo, branch)
+  const { number, title, url, state } = pr
+  return { kind: 'existing', number, title, url, state, checks: await readChecks(repo, url) }
 }
 
 export async function createPullRequest(repo: string, expectedBranch: string, title: string, body: string) {
   const branch = await currentBranch(repo)
   if (branch !== expectedBranch) throw new Error('La branche a changé. Rafraîchissez le panneau de contexte.')
-  // shortcut: la branche amont doit appartenir au dépôt cible, jusqu’à la sélection explicite des forks.
-  const upstream = await runGit(repo, [
-    'for-each-ref', '--format=%(upstream:remotename)%00%(upstream:remoteref)', `refs/heads/${branch}`,
+  const { repository, head } = await pullRequestTarget(repo, branch)
+  await assertPublished(repo, repository, head)
+  if (await currentBranch(repo) !== branch) throw new Error('La branche a changé. Rafraîchissez le panneau de contexte.')
+  // shortcut: GitHub crée une PR depuis un nom de branche. La vérification est un instantané
+  // jusqu'à ce que l'API accepte de conditionner la création à un SHA.
+  const result = await gh(repo, [
+    'pr', 'create', `--repo=github.com/${repository}`, `--head=${head}`, `--title=${title}`, `--body=${body}`,
   ])
-  const [remote, ref] = upstream.split('\0')
-  if (!remote || remote === '.' || !ref?.startsWith('refs/heads/'))
-    throw new Error('Poussez la branche avant de créer sa pull request.')
-  const head = ref.slice('refs/heads/'.length)
-  const result = await gh(repo, ['create', `--head=${head}`, `--title=${title}`, `--body=${body}`])
   if (result.code !== 0) throw new Error(result.error)
   return { url: pullRequestUrl.parse(result.stdout) }
+}
+
+async function assertPublished(repo: string, repository: string, head: string) {
+  const ref = head.split('/').map(encodeURIComponent).join('/')
+  const result = await gh(repo, ['api', '--hostname', 'github.com', `repos/${repository}/git/ref/heads/${ref}`])
+  if (result.code !== 0) {
+    if (/\(HTTP 404\)/.test(result.error)) throw new Error(PUSH_REQUIRED)
+    throw new Error(result.error)
+  }
+  const remote = z.object({ object: z.object({ sha: z.string() }) }).parse(JSON.parse(result.stdout))
+  const local = await runGit(repo, ['rev-parse', '--verify', 'HEAD'])
+  if (remote.object.sha !== local) throw new Error(PUSH_REQUIRED)
 }

@@ -15,15 +15,20 @@ test('le panneau de contexte publie le brouillon puis rafraîchit les checks', a
   git('update-ref', 'refs/remotes/origin/feat/42-contexte', 'HEAD')
   git('branch', '--set-upstream-to=origin/feat/42-contexte')
   writeFileSync(join(dir, 'gh'), `#!/bin/sh
-case "$2" in
-  create)
-    [ "$4" = '--title=Contexte révisé' ] && [ "$5" = '--body=Closes #42' ] || exit 2
+case "$1 $2" in
+  'repo view')
+    echo '{"url":"https://github.com/example/projet"}' ;;
+  'api --hostname')
+    if [ ! -f .git/fake-pushed ]; then echo 'gh: Not Found (HTTP 404)' >&2; exit 1; fi
+    echo '{"object":{"sha":"${git('rev-parse', 'HEAD').toString().trim()}"}}' ;;
+  'pr create')
+    [ "$5" = '--title=Contexte révisé' ] && [ "$6" = '--body=Closes #42' ] || exit 2
     touch .git/fake-pr
     echo https://github.com/example/projet/pull/9 ;;
-  view)
-    if [ ! -f .git/fake-pr ]; then echo 'no pull requests found for branch' >&2; exit 1; fi
-    echo '{"number":9,"title":"Contexte révisé","url":"https://github.com/example/projet/pull/9","state":"OPEN"}' ;;
-  checks)
+  'pr list')
+    if [ ! -f .git/fake-pr ]; then echo '[]'; exit 0; fi
+    echo '[{"number":9,"title":"Contexte révisé","url":"https://github.com/example/projet/pull/9","state":"OPEN","headRepository":{"nameWithOwner":"example/projet"}}]' ;;
+  'pr checks')
     if [ -f .git/fake-green ]; then echo '[{"name":"CI","bucket":"pass"}]'
     else echo '[{"name":"CI","bucket":"pending"}]'; exit 8; fi ;;
 esac
@@ -43,6 +48,9 @@ esac
     await expect(title).toHaveValue('feat: contexte')
     await expect(panel.getByRole('textbox', { name: 'Description de la PR' })).toHaveValue('Closes #42')
     await title.fill('Contexte révisé')
+    await panel.getByRole('button', { name: 'Créer la PR' }).click()
+    await expect(panel.getByRole('status')).toContainText('Poussez le commit courant')
+    writeFileSync(join(repo, '.git', 'fake-pushed'), '')
     await panel.getByRole('button', { name: 'Créer la PR' }).click()
     const prLink = panel.getByRole('link', { name: 'PR #9 · Contexte révisé' })
     await expect(prLink).toHaveAttribute(
