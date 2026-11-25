@@ -38,7 +38,7 @@ export async function repoInfo(path: string): Promise<RepoInfo> {
 
 export const repoRoot = async (path: string) => (await repoInfo(path)).root
 
-type Row = { id: string; path: string; git_dir: string; name: string; added_at: number }
+type Row = { id: string; path: string; git_dir: string; name: string; added_at: number; github_repo: string | null }
 const toProject = (r: Row): Project => ({ id: r.id, path: r.path, name: r.name, addedAt: r.added_at })
 
 export async function addProject(db: DatabaseSync, path: string): Promise<Project> {
@@ -77,6 +77,15 @@ export async function checkedProjectPath(db: DatabaseSync, id: string): Promise<
   if (gitDir !== row.git_dir)
     throw new Error(`${row.path} n'est plus le dépôt du projet ${row.name} : retirez-le puis ajoutez-le de nouveau.`)
   return row.path
+}
+
+// Un autre clone peut remplacer le dépôt au même chemin : ses issues ne doivent pas réécrire les tâches.
+// La première source vue est enregistrée, toute autre est refusée.
+export function bindGithubRepo(db: DatabaseSync, id: string, githubRepo: string): void {
+  db.prepare('UPDATE projects SET github_repo = ? WHERE id = ? AND github_repo IS NULL').run(githubRepo, id)
+  const bound = projectRow(db, id).github_repo
+  if (bound !== githubRepo)
+    throw new Error(`Les issues de ce projet viennent de ${bound}, pas de ${githubRepo} : import refusé.`)
 }
 
 export function removeProject(db: DatabaseSync, id: string): void {
