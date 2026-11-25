@@ -12,6 +12,7 @@ import { profileSocketPath } from './modules/agents/profile-socket'
 import { startAgentSocket } from './modules/agents/socket'
 import { registerProjectHandlers } from './modules/projects/ipc'
 import { registerReviewHandlers } from './modules/review/ipc'
+import { registerTaskHandlers } from './modules/orchestration/ipc'
 import { registerTerminalHandlers } from './modules/terminals/ipc'
 import { startPtyHost } from './modules/terminals/pty-host'
 import { registerSettings } from './modules/shell/settings'
@@ -69,6 +70,7 @@ void app.whenReady().then(async () => {
     },
   })
   registerReviewHandlers(db, agents)
+  registerTaskHandlers(db)
   const socket = socketPath
     ? await startAgentSocket({
         path: socketPath,

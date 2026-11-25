@@ -9,6 +9,7 @@ import { PullRequestPanel } from './modules/review/PullRequestPanel'
 import { ReviewView } from './modules/review/ReviewView'
 import { TerminalArea } from './modules/terminals/TerminalArea'
 import { ProjectPicker } from './modules/projects/ProjectPicker'
+import { TaskBoard } from './modules/orchestration/TaskBoard'
 
 export function App() {
   const workspace = useWorkspace()
@@ -39,6 +40,7 @@ export function App() {
         )}
         <TerminalArea />
         <AgentOverview />
+        <TaskBoard key={selection?.project.id} projectId={selection?.project.id} />
         <ReviewView projectId={selection?.project.id} worktreePath={selection?.worktree.path} />
         <OrcaImportDialog select={workspace.select} refresh={workspace.refresh} />
       </main>
