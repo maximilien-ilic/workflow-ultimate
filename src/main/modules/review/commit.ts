@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { copyFile, open, rename, rm } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { gitEnv, remoteGitEnv, runGit } from '../projects/git-env'
 
@@ -29,25 +30,50 @@ async function git(
   }
 }
 
+async function commitSelection(repo: string, message: string, paths: string[], env: NodeJS.ProcessEnv) {
+  // Le diff inclut aussi les commits de la branche. L'état Git distingue les chemins
+  // encore modifiés, y compris l'ancien nom d'un fichier déjà renommé dans l'index.
+  const pending = await git(
+    repo, ['status', '--porcelain=v1', '-z', '--no-renames', '--untracked-files=all'], env, LOCAL_TIMEOUT_MS,
+  )
+  const selected = new Set(paths)
+  const scope = new Set(pending.split('\0').map((entry) => entry.slice(3)).filter((path) => selected.has(path)))
+  if (!scope.size) throw new Error('Aucun changement à commiter parmi les fichiers cochés.')
+  const input = [...scope].join('\0') + '\0'
+  await git(repo, ['update-index', '--add', '--remove', '-z', '--stdin'], env, LOCAL_TIMEOUT_MS, input)
+  await git(
+    repo,
+    ['--literal-pathspecs', 'commit', '--only', '--message', message, '--pathspec-from-file=-', '--pathspec-file-nul'],
+    env, LOCAL_TIMEOUT_MS, input,
+  )
+}
+
+async function commitWithLockedIndex(repo: string, message: string, paths: string[]) {
+  const index = await runGit(repo, ['rev-parse', '--path-format=absolute', '--git-path', 'index'])
+  const lockPath = index + '.lock'
+  const lock = await open(lockPath, 'wx')
+  const env = { ...gitEnv(), GIT_INDEX_FILE: lockPath }
+  try {
+    await lock.close()
+    await copyFile(index, lockPath).catch(async (error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error
+      await git(repo, ['read-tree', '--empty'], env, LOCAL_TIMEOUT_MS)
+    })
+    // Git travaille sur sa copie dans index.lock. Les autres commandes voient le verrou
+    // ordinaire de Git et l'index réel n'est remplacé qu'après le commit.
+    await commitSelection(repo, message, paths, env)
+    await rename(lockPath, index)
+  } catch (error) {
+    await rm(lockPath, { force: true })
+    throw error
+  }
+}
+
 // Indexe les fichiers choisis (tous si aucune liste) puis commite ; renvoie le sha du commit.
 export async function commitChanges(repo: string, message: string, paths?: string[]): Promise<string> {
   const env = gitEnv()
   if (paths) {
-    // Le diff inclut aussi les commits de la branche. L'état Git distingue les chemins
-    // encore modifiés, y compris l'ancien nom d'un fichier déjà renommé dans l'index.
-    const pending = await git(
-      repo, ['status', '--porcelain=v1', '-z', '--no-renames', '--untracked-files=all'], env, LOCAL_TIMEOUT_MS,
-    )
-    const selected = new Set(paths)
-    const scope = new Set(pending.split('\0').map((entry) => entry.slice(3)).filter((path) => selected.has(path)))
-    if (!scope.size) throw new Error('Aucun changement à commiter parmi les fichiers cochés.')
-    const input = [...scope].join('\0') + '\0'
-    await git(repo, ['update-index', '--add', '--remove', '-z', '--stdin'], env, LOCAL_TIMEOUT_MS, input)
-    await git(
-      repo,
-      ['--literal-pathspecs', 'commit', '--only', '--message', message, '--pathspec-from-file=-', '--pathspec-file-nul'],
-      env, LOCAL_TIMEOUT_MS, input,
-    )
+    await commitWithLockedIndex(repo, message, paths)
   } else {
     await git(repo, ['add', '--all'], env, LOCAL_TIMEOUT_MS)
     await git(repo, ['commit', '--message', message], env, LOCAL_TIMEOUT_MS)

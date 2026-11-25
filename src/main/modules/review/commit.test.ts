@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -58,6 +58,59 @@ describe('commitChanges', () => {
     writeFileSync(join(repo, 'b.txt'), 'nouveau\n')
     const sha = await commitChanges(repo, 'feat: ajouter b', ['a.txt', 'b.txt'])
     expect(git(repo, 'show', '--format=', '--name-only', sha)).toBe('b.txt')
+  })
+
+  it('préserve HEAD, l’index et le dossier de travail si Git refuse le commit partiel', async () => {
+    writeFileSync(join(repo, 'a.txt'), 'version indexée\n')
+    git(repo, 'add', 'a.txt')
+    writeFileSync(join(repo, 'a.txt'), 'version sur disque\n')
+    writeFileSync(join(repo, 'b.txt'), 'non suivi\n')
+    git(repo, 'config', 'user.name', '')
+    git(repo, 'config', 'user.email', '')
+    const indexPath = git(repo, 'rev-parse', '--path-format=absolute', '--git-path', 'index')
+    const head = git(repo, 'rev-parse', 'HEAD')
+    const before = readFileSync(indexPath)
+
+    await expect(commitChanges(repo, 'refusé', ['a.txt', 'b.txt'])).rejects.toThrow(/ident|name/i)
+
+    expect(git(repo, 'rev-parse', 'HEAD')).toBe(head)
+    expect(readFileSync(indexPath)).toEqual(before)
+    expect(git(repo, 'show', ':a.txt')).toBe('version indexée')
+    expect(readFileSync(join(repo, 'a.txt'), 'utf8')).toBe('version sur disque\n')
+    expect(readFileSync(join(repo, 'b.txt'), 'utf8')).toBe('non suivi\n')
+    expect(git(repo, 'status', '--porcelain')).toBe('MM a.txt\n?? b.txt')
+  })
+
+  it('préserve les fichiers indexés hors sélection après un commit réussi', async () => {
+    writeFileSync(join(repo, 'a.txt'), 'version indexée\n')
+    git(repo, 'add', 'a.txt')
+    writeFileSync(join(repo, 'a.txt'), 'nouvelle version sur disque\n')
+    writeFileSync(join(repo, 'b.txt'), 'nouveau\n')
+
+    await commitChanges(repo, 'ajouter b', ['b.txt'])
+
+    expect(git(repo, 'show', 'HEAD:a.txt')).toBe('a')
+    expect(git(repo, 'show', ':a.txt')).toBe('version indexée')
+    expect(git(repo, 'show', 'HEAD:b.txt')).toBe('nouveau')
+    expect(git(repo, 'status', '--short')).toBe('MM a.txt')
+  })
+
+  it('respecte un verrou Git existant dans un worktree lié', async () => {
+    const linked = join(dir, 'lié')
+    git(repo, 'worktree', 'add', '-qb', 'feat/lié', linked)
+    const lock = git(linked, 'rev-parse', '--path-format=absolute', '--git-path', 'index') + '.lock'
+    writeFileSync(lock, 'verrou détenu par Git')
+    writeFileSync(join(linked, 'b.txt'), 'nouveau\n')
+    const head = git(linked, 'rev-parse', 'HEAD')
+
+    await expect(commitChanges(linked, 'ajouter b', ['b.txt'])).rejects.toThrow(/index\.lock/)
+    expect(readFileSync(lock, 'utf8')).toBe('verrou détenu par Git')
+    expect(git(linked, 'rev-parse', 'HEAD')).toBe(head)
+
+    rmSync(lock)
+    await commitChanges(linked, 'ajouter b', ['b.txt'])
+    expect(git(linked, 'status', '--short')).toBe('')
+    expect(git(repo, 'rev-parse', 'HEAD')).toBe(head)
   })
 
   it('commite tout sans liste de fichiers', async () => {
