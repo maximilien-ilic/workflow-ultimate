@@ -10,7 +10,7 @@
     "noFallthroughCasesInSwitch": true,
     "isolatedModules": true,
     "skipLibCheck": true,
-    "types": ["node", "vite/client"]
+    "types": ["node", "vite/client", "electron-vite/node"]
   },
   "include": ["src", "electron.vite.config.ts"]
 }

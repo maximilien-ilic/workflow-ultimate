@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { taskStatuses, type Task, type TaskStatus } from '../../../shared/ipc'
 import { registerCommand } from '../palette/commands'
+import './task-board.css'
 
 type Draft = Pick<Task, 'title' | 'body'>
 type Direction = -1 | 1
@@ -36,10 +37,18 @@ type CardProps = { task: Task; lastMove: Move | null; onMove: (direction: Direct
 
 function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
   const [editing, setEditing] = useState(false)
+  const [editorClosed, setEditorClosed] = useState(false)
+  const closeEditor = () => {
+    setEditing(false)
+    setEditorClosed(true)
+  }
   if (editing)
-    return <TaskEditor task={task} onCancel={() => setEditing(false)} onSave={(draft) => { setEditing(false); onSave(draft) }} />
-  // Le déplacement recrée la carte dans une autre colonne : on y remet le focus pour enchaîner au clavier.
-  const moved = lastMove?.id === task.id ? lastMove.direction : null
+    return <TaskEditor task={task} onCancel={closeEditor} onSave={(draft) => { closeEditor(); onSave(draft) }} />
+  // Déplacer ou fermer l'éditeur recrée les boutons : un seul reçoit le focus pour enchaîner au clavier.
+  // Fermer l'éditeur l'emporte ; une carte arrivée dans une colonne du bord le rend aussi à « Éditer ».
+  const lastDirection = lastMove?.id === task.id ? lastMove.direction : null
+  const moved = !editorClosed && lastDirection && neighbour(task.status, lastDirection) ? lastDirection : null
+  const focusEdit = editorClosed || (lastDirection !== null && moved === null)
   const moveButton = (direction: Direction) => {
     const target = neighbour(task.status, direction)
     if (!target) return null
@@ -52,10 +61,11 @@ function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
   }
   return (
     <li>
+      {task.issueNumber && <span>#{task.issueNumber} </span>}
       <strong>{task.title}</strong>
       {task.body && <p>{task.body}</p>}
       {moveButton(-1)}
-      <button type="button" onClick={() => setEditing(true)} aria-label={`Éditer « ${task.title} »`}>Éditer</button>
+      <button type="button" autoFocus={focusEdit} onClick={() => setEditing(true)} aria-label={`Éditer « ${task.title} »`}>Éditer</button>
       {moveButton(1)}
     </li>
   )
@@ -83,49 +93,69 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
   const [error, setError] = useState('')
   const [lastMove, setLastMove] = useState<Move | null>(null)
 
-  const apply = (request: Promise<Task[]>) => {
-    setError('')
-    request.then(setTasks, (reason: unknown) => setError(String(reason)))
-  }
+  const [importing, setImporting] = useState(false)
 
-  useEffect(
-    () =>
-      registerCommand({
-        id: 'orchestration.tasks',
-        title: 'Tableau de tâches',
-        keybinding: 'Ctrl+Shift+K',
-        run() {
-          dialog.current?.showModal()
-          if (projectId) apply(window.wu.invoke('tasks:list', { projectId }))
-        },
-      }),
-    [projectId],
-  )
+  const apply = useCallback((request: Promise<Task[]>) => {
+    setError('')
+    return request.then(setTasks, (reason: unknown) => setError(String(reason)))
+  }, [])
+  const importIssues = useCallback((id: string) => {
+    setImporting(true)
+    void apply(window.wu.invoke('tasks:importIssues', { projectId: id })).finally(() => setImporting(false))
+  }, [apply])
+
+  useEffect(() => {
+    const showBoard = (load: (id: string) => void) => {
+      if (!dialog.current?.open) dialog.current?.showModal()
+      if (projectId) load(projectId)
+    }
+    const removeBoard = registerCommand({
+      id: 'orchestration.tasks',
+      title: 'Tableau de tâches',
+      keybinding: 'Ctrl+Shift+K',
+      run: () => showBoard((id) => void apply(window.wu.invoke('tasks:list', { projectId: id }))),
+    })
+    const removeImport = registerCommand({
+      id: 'orchestration.import-issues',
+      title: 'Importer les issues GitHub',
+      run: () => showBoard(importIssues),
+    })
+    return () => {
+      removeBoard()
+      removeImport()
+    }
+  }, [projectId, apply, importIssues])
 
   const move = (task: Task, direction: Direction) => {
     const status = neighbour(task.status, direction)
     if (!projectId || !status) return
     setLastMove({ id: task.id, direction })
-    apply(window.wu.invoke('tasks:move', { projectId, id: task.id, status }))
+    void apply(window.wu.invoke('tasks:move', { projectId, id: task.id, status }))
   }
 
   return (
     <dialog ref={dialog} aria-label="Tableau de tâches">
       <h2>Tâches</h2>
       {!projectId && <p>Aucun projet sélectionné.</p>}
-      {projectId && <NewTaskForm onCreate={(draft) => apply(window.wu.invoke('tasks:create', { projectId, ...draft }))} />}
+      {projectId && <NewTaskForm onCreate={(draft) => void apply(window.wu.invoke('tasks:create', { projectId, ...draft }))} />}
+      {projectId && (
+        <button type="button" onClick={() => importIssues(projectId)} disabled={importing}>
+          Importer les issues GitHub
+        </button>
+      )}
+      <p role="status">{importing ? 'Import des issues…' : ''}</p>
       {error && <p role="alert">{error}</p>}
-      {projectId && taskStatuses.map((status) => (
+      {projectId && <div className="task-board-columns">{taskStatuses.map((status) => (
         <section key={status} aria-label={columnTitles[status]}>
           <h3>{columnTitles[status]}</h3>
           <ul>
             {tasks.filter((task) => task.status === status).map((task) => (
               <TaskCard key={task.id} task={task} lastMove={lastMove} onMove={(direction) => move(task, direction)}
-                onSave={(draft) => apply(window.wu.invoke('tasks:update', { projectId, id: task.id, ...draft }))} />
+                onSave={(draft) => void apply(window.wu.invoke('tasks:update', { projectId, id: task.id, ...draft }))} />
             ))}
           </ul>
         </section>
-      ))}
+      ))}</div>}
       <button type="button" onClick={() => dialog.current?.close()}>Fermer</button>
     </dialog>
   )

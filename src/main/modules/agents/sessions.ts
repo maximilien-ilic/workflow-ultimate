@@ -23,7 +23,12 @@ export type AgentSessions = {
 export function registerAgentHandlers(
   db: DatabaseSync,
   terminals: Terminals,
-  opts: { notify: NotifyTarget; socketPath: string; bins: Record<AgentKind, string> },
+  opts: {
+    notify: NotifyTarget
+    socketPath: string
+    bins: Record<AgentKind, string>
+    onStateChange?: (session: AgentSession) => void
+  },
 ): AgentSessions {
   const live = new Map<string, Live>()
   const byTerminal = new Map<string, string>() // terminal → session
@@ -48,9 +53,10 @@ export function registerAgentHandlers(
     const { state, ignoredReason } = transitionAgent(current.state, event)
     if (ignoredReason) return console.warn(`agents : ${ignoredReason}`)
     if (state === current.state) return
+    const updatedAt = Date.now()
     db.prepare('UPDATE agent_sessions SET state = ?, updated_at = ? WHERE id = ?').run(
       state,
-      Date.now(),
+      updatedAt,
       sessionId,
     )
     if (!session.owner.isDestroyed())
@@ -59,6 +65,7 @@ export function registerAgentHandlers(
         terminalId: session.terminalId,
         state,
       } satisfies AgentEvent)
+    opts.onStateChange?.(toSession({ ...current, state, updated_at: updatedAt }))
   }
 
   terminals.onExit((terminalId, exitCode) => {

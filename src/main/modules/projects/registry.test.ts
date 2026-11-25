@@ -6,7 +6,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDatabase } from '../shell/db'
 import { migrations } from '../shell/migrations'
-import { addProject, listProjects, removeProject, repoRoot, scanForRepos } from './registry'
+import { addProject, checkedProjectPath, listProjects, removeProject, repoRoot, scanForRepos } from './registry'
 
 let dir: string
 let db: DatabaseSync
@@ -124,6 +124,20 @@ describe('registre', () => {
     await addProject(db, makeRepo(join(dir, 'zeta')))
     await addProject(db, makeRepo(join(dir, 'alpha')))
     expect(listProjects(db).map((p) => p.name)).toEqual(['alpha', 'zeta'])
+  })
+})
+
+describe('checkedProjectPath', () => {
+  it('renvoie le chemin tant que le dossier reste le dépôt du projet', async () => {
+    const project = await addProject(db, makeRepo(join(dir, 'app')))
+    await expect(checkedProjectPath(db, project.id)).resolves.toBe(project.path)
+  })
+
+  it('refuse un chemin qui désigne désormais un autre dépôt', async () => {
+    const outer = makeRepo(join(dir, 'outer'))
+    const project = await addProject(db, makeRepo(join(outer, 'inner')))
+    rmSync(join(project.path, '.git'), { recursive: true })
+    await expect(checkedProjectPath(db, project.id)).rejects.toThrow(/n'est plus le dépôt du projet inner/)
   })
 })
 

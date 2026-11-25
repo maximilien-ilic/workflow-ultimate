@@ -40,6 +40,12 @@ describe('settings', () => {
     expect(readSettings(file)).toEqual(defaultSettings)
   })
 
+  it('conserve le choix de couper le son sans modifier le contrat IPC', () => {
+    writeSettings(file, { ...defaultSettings, notificationSound: false })
+    expect(readSettings(file)).toEqual({ ...defaultSettings, notificationSound: false })
+    expect(settingsSchema.safeParse(readSettings(file)).success).toBe(false)
+  })
+
   it('remplace le fichier et ne laisse pas de fichier temporaire', () => {
     writeSettings(file, defaultSettings)
     const next = {

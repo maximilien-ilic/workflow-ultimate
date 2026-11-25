@@ -6,6 +6,9 @@ import { remoteGitEnv, runGit } from '../projects/git-env'
 
 const exec = promisify(execFile)
 const GH_TIMEOUT_MS = 15_000
+// Sans limite explicite, Node coupe la sortie à 1 Mio ; une longue liste d'issues peut dépasser cette taille.
+export const GH_MAX_OUTPUT_BYTES = 16 * 1024 * 1024
+const MAX_BUFFER_EXCEEDED = 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
 const PUSH_REQUIRED = 'Poussez le commit courant vers GitHub avant de créer sa pull request.'
 const HEAD_REF_PREFIX = 'refs/heads/'
 const pullRequestUrl = z.string().regex(/^https:\/\/github\.com\/[a-z\d_.-]+\/[a-z\d_.-]+\/pull\/\d+$/i)
@@ -18,12 +21,12 @@ const pullRequest = z.object({
 })
 const checks = z.array(z.object({ name: z.string(), bucket: z.enum(['pass', 'fail', 'pending', 'skipping', 'cancel']) }))
 
-async function gh(repo: string, args: string[]) {
+export async function gh(repo: string, args: string[]) {
   const env = remoteGitEnv()
   delete env.GH_REPO
   delete env.GH_HOST
   const command = exec('gh', args, {
-    cwd: repo, env: { ...env, GH_PROMPT_DISABLED: '1' }, timeout: GH_TIMEOUT_MS,
+    cwd: repo, env: { ...env, GH_PROMPT_DISABLED: '1' }, timeout: GH_TIMEOUT_MS, maxBuffer: GH_MAX_OUTPUT_BYTES,
   })
   command.child.stdin?.end()
   try {
@@ -31,6 +34,8 @@ async function gh(repo: string, args: string[]) {
     return { stdout: stdout.trim(), error: '', code: 0 }
   } catch (cause) {
     const { code, stdout, stderr, message } = cause as NodeJS.ErrnoException & { stdout?: string; stderr?: string }
+    if (code === MAX_BUFFER_EXCEEDED)
+      return { stdout: '', error: `La sortie de gh dépasse la limite de ${GH_MAX_OUTPUT_BYTES} octets.`, code }
     return { stdout: stdout?.trim() ?? '', error: stderr?.trim() || message || String(cause), code }
   }
 }

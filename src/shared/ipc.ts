@@ -39,7 +39,9 @@ export type TerminalHistory = z.infer<typeof terminalHistorySchema>
 
 // Colonnes du tableau de tâches, dans l'ordre d'affichage.
 export const taskStatuses = ['todo', 'doing', 'review', 'done'] as const
-const taskDraft = { title: z.string().trim().min(1, 'titre vide').max(256), body: z.string().max(20_000) }
+// Partagée avec l'import des issues GitHub : une tâche importée doit rester éditable.
+export const TASK_BODY_MAX_LENGTH = 20_000
+const taskDraft = { title: z.string().trim().min(1, 'titre vide').max(256), body: z.string().max(TASK_BODY_MAX_LENGTH) }
 const taskId = z.number().int().positive()
 
 export const ipcRequestSchemas = {
@@ -147,10 +149,19 @@ export const ipcRequestSchemas = {
   'tasks:create': z.object({ projectId: z.uuid(), ...taskDraft }).strict(),
   'tasks:update': z.object({ projectId: z.uuid(), id: taskId, ...taskDraft }).strict(),
   'tasks:move': z.object({ projectId: z.uuid(), id: taskId, status: z.enum(taskStatuses) }).strict(),
+  // Importe ou met à jour les issues GitHub du projet (via `gh`).
+  'tasks:importIssues': z.object({ projectId: z.uuid() }).strict(),
 } satisfies Record<string, z.ZodType>
 
 export type TaskStatus = (typeof taskStatuses)[number]
-export type Task = { id: number; title: string; body: string; status: TaskStatus }
+export type Task = {
+  id: number
+  title: string
+  body: string
+  status: TaskStatus
+  issueNumber: number | null // issue GitHub importée, sinon null
+  issueUrl: string | null
+}
 
 export type ReviewComment = { id: number; path: string; line: number; body: string; sentAt: number | null }
 export type PullRequestCheck = { name: string; bucket: 'pass' | 'fail' | 'pending' | 'skipping' | 'cancel' }
@@ -189,6 +200,7 @@ export type AgentSession = {
   updatedAt: number
 }
 // Poussé sur le canal `agent:event` à la fenêtre qui a lancé l'agent.
+export type AgentDesktopEvent = { type: 'show-terminal'; terminalId: string } | { type: 'play-sound' }
 export type AgentEvent = { sessionId: string; terminalId: string; state: AgentState }
 export type ChangedFile = {
   status: 'added' | 'modified' | 'deleted' | 'renamed'
@@ -245,6 +257,7 @@ interface IpcResponses {
   'tasks:create': Task[]
   'tasks:update': Task[]
   'tasks:move': Task[]
+  'tasks:importIssues': Task[]
   'diagnostics:report': string
   'settings:get': Settings
   'settings:set': null

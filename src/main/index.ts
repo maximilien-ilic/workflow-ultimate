@@ -1,5 +1,6 @@
 import { app, dialog } from 'electron'
 import { join } from 'node:path'
+import { registerAgentDesktop } from './modules/shell/agent-desktop'
 import { dataDir, openDatabase } from './modules/shell/db'
 import { buildDiagnosticsReport } from './modules/shell/diagnostics'
 import { registerGlobalShortcuts } from './modules/shell/global-shortcuts'
@@ -65,6 +66,7 @@ void app.whenReady().then(async () => {
         ? join(process.resourcesPath, 'wu-notify')
         : join(__dirname, '../../resources/wu-notify'),
     },
+    onStateChange: (session) => onAgentStateChange(session),
     socketPath: socketPath ?? '',
     bins: {
       'claude-code': process.env['WU_CLAUDE_BIN'] || 'claude',
@@ -86,7 +88,9 @@ void app.whenReady().then(async () => {
     ptyHost.stop()
     db.close()
   })
-  flushTerminalHistory(createMainWindow())
+  const window = createMainWindow()
+  const onAgentStateChange = registerAgentDesktop(window)
+  flushTerminalHistory(window)
 })
 void app.whenReady().then(registerGlobalShortcuts)
 app.on('window-all-closed', () => app.quit())
