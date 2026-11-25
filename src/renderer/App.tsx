@@ -6,6 +6,7 @@ import { useWorkspace } from './modules/projects/workspace'
 import { ShellLayout } from './modules/shell/ShellLayout'
 import { AgentOverview } from './modules/agents/AgentOverview'
 import { TerminalArea } from './modules/terminals/TerminalArea'
+import { ProjectPicker } from './modules/projects/ProjectPicker'
 
 export function App() {
   const workspace = useWorkspace()
@@ -16,6 +17,7 @@ export function App() {
   }, [])
   return (
     <ShellLayout leftPanel={<ProjectSidebar workspace={workspace} />}>
+      <ProjectPicker workspace={workspace} />
       <main>
         <h1>Workflow Ultimate</h1>
         {error ? (

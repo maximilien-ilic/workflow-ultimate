@@ -13,10 +13,47 @@ export function worktreeLabel(worktree: WorktreeSummary): string {
   )
 }
 
+const recentKey = 'wu.workspace-recents'
+
+function readRecent(): string[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(recentKey) ?? '[]')
+    if (Array.isArray(stored))
+      return stored.filter((key): key is string => typeof key === 'string').slice(0, 100)
+  } catch {
+    // Un profil sans stockage local reste utilisable.
+  }
+  return []
+}
+
 export function useWorkspace() {
   const [groups, setGroups] = useState<ProjectGroup[]>([])
-  const [path, select] = useState<string>()
+  const [path, setPath] = useState<string>()
+  const [recent, setRecent] = useState(readRecent)
+  const [collapsed, setCollapsed] = useState(new Set<string>())
   const [error, setError] = useState('')
+  const select = useCallback((path: string, key = `worktree:${path}`) => {
+    setPath(path)
+    setRecent((previous) => [key, ...previous.filter((entry) => entry !== key)].slice(0, 100))
+  }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(recentKey, JSON.stringify(recent))
+    } catch {
+      // Le classement reste accessible tant que la fenêtre est ouverte.
+    }
+  }, [recent])
+
+  function expand(id: string, expanded: boolean) {
+    setCollapsed((previous) => {
+      const next = new Set(previous)
+      if (expanded) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   const revision = useRef(0)
   const invalidate = useCallback(() => {
     revision.current++
@@ -74,7 +111,7 @@ export function useWorkspace() {
     worktrees.map((worktree) => ({ project, worktree })),
   )
   const selected = targets.find(({ worktree }) => worktree.path === path) ?? targets[0]
-  return { groups, selected, select, refresh, error }
+  return { groups, selected, select, refresh, error, recent, collapsed, expand }
 }
 
 export type Workspace = ReturnType<typeof useWorkspace>
