@@ -17,7 +17,20 @@ const keybindings = z
     const effective = [paletteKeybinding, ...Object.values({ ...panelCommandBindings, ...overrides })]
     return new Set(effective).size === effective.length
   }, 'Raccourcis en conflit')
-export const settingsSchema = z.strictObject({ layout, keybindings: keybindings.default({}) })
+const orcaImport = z.strictObject({
+  seen: z.boolean(),
+  workspaces: z
+    .string()
+    .startsWith('/')
+    .max(4096)
+    .refine((path) => !path.includes('\0'))
+    .optional(),
+})
+export const settingsSchema = z.strictObject({
+  layout,
+  keybindings: keybindings.default({}),
+  orcaImport: orcaImport.optional(),
+})
 export type Settings = z.output<typeof settingsSchema>
 
 function storedPanel(defaults: Settings['layout']['left']) {
@@ -35,6 +48,7 @@ const storedSettings = z
       })
       .catch(defaultSettings.layout),
     keybindings: keybindings.catch({}).default({}),
+    orcaImport: orcaImport.optional().catch(undefined),
   })
   .catch(defaultSettings)
 

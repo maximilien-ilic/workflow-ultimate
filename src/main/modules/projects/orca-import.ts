@@ -3,15 +3,13 @@ import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { z } from 'zod'
+import type { OrcaImport } from '../../../shared/ipc'
 
-export type OrcaImport = {
-  repos: { path: string; name: string; color: string | null }[]
-  worktrees: { repoPath: string; path: string; name: string }[]
-  workspaceDir: string | null
-  warnings: string[]
-}
-
-const absolute = z.string().startsWith('/')
+const absolute = z
+  .string()
+  .startsWith('/')
+  .max(4096)
+  .refine((path) => !path.includes('\0'))
 const repoEntry = z.object({
   id: z.string(),
   path: absolute,
