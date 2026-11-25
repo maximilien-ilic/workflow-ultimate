@@ -1,4 +1,12 @@
 import type { AgentSession, AgentState } from '../../../shared/ipc'
+import { terminalStore } from '../terminals/terminal-store'
+
+import notificationSoundUrl from '../shell/notification.wav'
+
+window.wu.onAgentDesktopEvent((event) => {
+  if (event.type === 'show-terminal') terminalStore.showPane(event.terminalId)
+  else void new Audio(notificationSoundUrl).play().catch(() => {})
+})
 
 export type AgentInfo = {
   sessionId: string

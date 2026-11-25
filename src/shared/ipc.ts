@@ -152,6 +152,7 @@ export type AgentSession = {
   updatedAt: number
 }
 // Poussé sur le canal `agent:event` à la fenêtre qui a lancé l'agent.
+export type AgentDesktopEvent = { type: 'show-terminal'; terminalId: string } | { type: 'play-sound' }
 export type AgentEvent = { sessionId: string; terminalId: string; state: AgentState }
 export type ChangedFile = {
   status: 'added' | 'modified' | 'deleted' | 'renamed'

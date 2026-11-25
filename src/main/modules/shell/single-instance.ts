@@ -15,8 +15,7 @@ export function parseAction(argv: readonly string[]): string | null {
   return null
 }
 
-function showMainWindow(): void {
-  const window = BrowserWindow.getAllWindows()[0]
+export function showMainWindow(window = BrowserWindow.getAllWindows()[0]): void {
   if (!window) return
   if (window.isMinimized()) window.restore()
   window.show()

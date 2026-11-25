@@ -41,7 +41,7 @@ Modules prévus **après la v1** (ne pas coder avant) : `browser` (navigateur in
 - L'appli démarre en moins de 1,5 s (démarrage à froid, mesuré) et restaure la dernière disposition (projet, onglets, tailles des panneaux).
 - Les réglages sont stockés dans `~/.config/workflow-ultimate/` et les données (SQLite) dans `~/.local/share/workflow-ultimate/`.
 - Icône dans le tray KDE (StatusNotifierItem) avec un badge quand un agent attend une réponse.
-- Notifications natives (freedesktop) quand un agent finit ou attend une réponse ; un clic ouvre la bonne session.
+- Notifications natives (freedesktop) quand un agent finit ou attend une réponse et que la fenêtre est sans focus. Un clic affiche son onglet. Le menu du tray permet de couper le son des notifications.
 - **Raccourcis globaux** (même quand la fenêtre n'a pas le focus) via le portail xdg `GlobalShortcuts`, que KDE supporte (feature Electron `GlobalShortcutsPortal`). Ils apparaissent et se modifient dans Configuration système → Raccourcis. Repli : des actions du `.desktop` / la CLI `workflow-ultimate --action <id>` envoyées à l'instance unique, à lier à un raccourci KDE.
 - Si l'appli plante, elle repart sur le même état (les PTY des agents tournent dans un processus séparé et survivent au rechargement de l'interface).
 
