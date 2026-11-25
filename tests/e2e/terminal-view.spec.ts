@@ -115,3 +115,59 @@ test('un collage plus long que la borne du canal arrive entier, dans l’ordre',
   await expect.poll(() => screenOf(page, id), { timeout: 15_000 }).toMatch(/^70000$/m)
   await app.close()
 })
+
+test('un split pendant un collage ne laisse pas la frappe suivante doubler le collage', async () => {
+  const repo = join(dir, 'split-collage')
+  mkdirSync(repo)
+  execFileSync('git', ['init', '-q', repo])
+  const app = await _electron.launch({
+    args: ['out/main/index.js'],
+    env: { ...process.env, XDG_DATA_HOME: join(dir, 'data'), XDG_CONFIG_HOME: join(dir, 'config') },
+  })
+  try {
+    const page = await app.firstWindow()
+    await page.evaluate((path) => window.wu.invoke('projects:add', { path }), repo)
+    await page.reload()
+    await page.getByRole('button', { name: 'Terminal dans split-collage' }).click()
+
+    const hosts = page.locator('.terminal-host')
+    const id = (await hosts.first().getAttribute('data-terminal-id'))!
+    const originalHost = page.locator(`[data-terminal-id="${id}"]`)
+    const input = originalHost.getByRole('textbox', { name: 'Terminal input' })
+    const originalInput = await input.elementHandle()
+
+    const writes = await app.evaluateHandle(({ BrowserWindow }, terminalId) => {
+      const contents = BrowserWindow.getAllWindows()[0]!.webContents
+      const received: string[] = []
+      const firstWrite = Promise.withResolvers<void>()
+      contents.ipc.handle('terminal:write', async (_event, request: { id: string; data: string }) => {
+        if (request.id === terminalId && (request.data.includes('x') || request.data === 'y')) {
+          received.push(request.data === 'y' ? 'frappe' : 'collage')
+          if (received.length === 1) await firstWrite.promise
+        }
+        return null
+      })
+      return { received, release: firstWrite.resolve }
+    }, id)
+    const writeOrder = () => writes.evaluate(({ received }) => received)
+
+    const pasteLength = 70_000
+    await input.evaluate((element, text) => {
+      const clipboardData = new DataTransfer()
+      clipboardData.setData('text/plain', text)
+      element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, clipboardData }))
+    }, 'x'.repeat(pasteLength))
+    await expect.poll(writeOrder).toEqual(['collage'])
+    await input.press('Control+Shift+D')
+    await expect(hosts).toHaveCount(2)
+    await expect.poll(() => originalInput.evaluate((element) => element.isConnected)).toBe(false)
+
+    await input.press('y')
+    // Ce tour IPC s'assure que toute frappe déjà transmise a atteint le main avant de le débloquer.
+    await page.evaluate(() => window.wu.invoke('app:info', {}))
+    await writes.evaluate(({ release }) => release())
+    await expect.poll(writeOrder).toEqual(['collage', 'collage', 'frappe'])
+  } finally {
+    await app.close()
+  }
+})
