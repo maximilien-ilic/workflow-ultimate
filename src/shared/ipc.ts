@@ -13,10 +13,20 @@ export const ipcRequestSchemas = {
   'projects:remove': z.object({ id: z.uuid() }).strict(),
   // Ouvre le sélecteur de dossier du système : `repo` ajoute un dépôt, `scan` ajoute tous ceux trouvés dedans.
   'projects:pick': z.object({ mode: z.enum(['repo', 'scan']) }).strict(),
+  'projects:orcaPreview': z.object({ manual: z.boolean() }).strict(),
+  'projects:orcaImport': z
+    .object({
+      repos: z.array(absolutePath).max(2000),
+      worktrees: z.array(absolutePath).max(2000),
+      useWorkspace: z.boolean(),
+    })
+    .strict(),
+  'projects:orcaDismiss': z.object({}).strict(),
   'diagnostics:report': z.object({}).strict(),
   'settings:get': z.object({}).strict(),
   'settings:set': settingsSchema,
   'worktrees:list': z.object({ projectId: z.uuid() }).strict(),
+  'worktrees:status': z.object({ projectId: z.uuid() }).strict(),
   'worktrees:create': z
     .object({ projectId: z.uuid(), branch: z.string().min(1).max(200), create: z.boolean() })
     .strict(),
@@ -71,6 +81,15 @@ export type AppInfo = { name: string; version: string; electron: string; node: s
 export type Project = { id: string; path: string; name: string; addedAt: number }
 // Résultat d'un ajout par sélecteur : projets ajoutés et chemins refusés (avec la raison).
 export type Worktree = { path: string; branch: string | null; main: boolean }
+export type GitStatus = {
+  branch: string | null
+  shortSha: string | null
+  modified: number
+  staged: number
+  untracked: number
+  ahead: number | null
+  behind: number | null
+}
 export type AgentState = 'starting' | 'working' | 'waiting' | 'done' | 'error'
 export type AgentSession = {
   id: string
@@ -88,6 +107,12 @@ export type ChangedFile = {
   oldPath?: string
 }
 export type PickResult = { added: Project[]; rejected: { path: string; reason: string }[] }
+export type OrcaImport = {
+  repos: { path: string; name: string; color: string | null }[]
+  worktrees: { repoPath: string; path: string; name: string }[]
+  workspaceDir: string | null
+  warnings: string[]
+}
 
 interface IpcResponses {
   'app:info': AppInfo
@@ -95,7 +120,11 @@ interface IpcResponses {
   'projects:add': Project
   'projects:remove': null
   'projects:pick': PickResult
+  'projects:orcaPreview': OrcaImport | null
+  'projects:orcaImport': PickResult & { activeWorktree: string | null }
+  'projects:orcaDismiss': null
   'worktrees:list': Worktree[]
+  'worktrees:status': { path: string; status: GitStatus | null }[]
   'worktrees:create': string
   'worktrees:createFromIssue': string
   'worktrees:remove': { removed: boolean; dirtyFiles: number }

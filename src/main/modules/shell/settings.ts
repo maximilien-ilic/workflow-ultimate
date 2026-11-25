@@ -29,11 +29,25 @@ export function writeSettings(file: string, settings: Settings): void {
   }
 }
 
+const settingsFile = () => join(appDirectory('config'), 'settings.json')
+
+export function readAppSettings(): Settings {
+  return readSettings(settingsFile())
+}
+
+export function saveOrcaImport(workspaces?: string): void {
+  const settings = readAppSettings()
+  writeSettings(settingsFile(), {
+    ...settings,
+    orcaImport: { seen: true, workspaces: workspaces ?? settings.orcaImport?.workspaces },
+  })
+}
+
 export function registerSettings(): void {
-  const file = join(appDirectory('config'), 'settings.json')
-  handle('settings:get', () => readSettings(file))
-  handle('settings:set', (settings) => {
-    writeSettings(file, settings)
+  handle('settings:get', readAppSettings)
+  handle('settings:set', ({ layout, keybindings }) => {
+    // L'import Orca peut avoir mis à jour son dossier depuis le dernier chargement du renderer.
+    writeSettings(settingsFile(), { ...readAppSettings(), layout, keybindings })
     return null
   })
 }

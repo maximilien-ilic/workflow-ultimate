@@ -1,3 +1,11 @@
+// Délai dépassé : le pty-host n'a pas répondu, mais il peut encore le faire plus tard.
+export class PendingTimeout extends Error {
+  constructor() {
+    super('Pas de réponse du pty-host (délai dépassé)')
+    this.name = 'PendingTimeout'
+  }
+}
+
 type Waiter<T> = { resolve: (value: T) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
 
 // Requêtes au pty-host dont la réponse arrive par un événement (rejeu, confirmation de lancement) :
@@ -7,10 +15,7 @@ export class Pending<T> {
 
   wait(id: string, timeoutMs: number): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(
-        () => this.fail(id, new Error(`Pas de réponse du pty-host (délai dépassé)`)),
-        timeoutMs,
-      )
+      const timer = setTimeout(() => this.fail(id, new PendingTimeout()), timeoutMs)
       this.waiters.set(id, [...(this.waiters.get(id) ?? []), { resolve, reject, timer }])
     })
   }

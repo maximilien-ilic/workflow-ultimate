@@ -29,12 +29,23 @@ test('créer un worktree, refuser sa suppression avec des changements, puis le s
   })
   const page = await app.firstWindow()
   const project = await page.evaluate((path) => window.wu.invoke('projects:add', { path }), repo)
+  await page.reload()
+  const sidebar = page.getByRole('complementary', { name: 'Barre latérale' })
+  const tree = sidebar.getByRole('tree', { name: 'Projets et worktrees' })
+  const projectRow = tree.getByRole('treeitem', { name: 'app', exact: true })
+  const main = tree.getByRole('treeitem', { name: 'main', exact: true })
+  await projectRow.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(main).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(main).toHaveAttribute('aria-selected', 'true')
 
-  const path = await page.evaluate(
-    (projectId) => window.wu.invoke('worktrees:create', { projectId, branch: 'feat/1-essai', create: true }),
-    project.id,
-  )
-  expect(path).toBe(join(dir, 'home/workflow-ultimate/workspaces/app/feat-1-essai'))
+  await sidebar.getByRole('button', { name: 'Créer un worktree…' }).click()
+  await sidebar.getByRole('textbox', { name: 'Branche' }).fill('feat/1-essai')
+  await sidebar.getByRole('button', { name: 'Créer', exact: true }).click()
+  const linked = tree.getByRole('treeitem', { name: 'feat/1-essai', exact: true })
+  await expect(linked).toBeVisible()
+  const path = join(dir, 'home/workflow-ultimate/workspaces/app/feat-1-essai')
   const list = await page.evaluate(
     (projectId) => window.wu.invoke('worktrees:list', { projectId }),
     project.id,
@@ -42,6 +53,8 @@ test('créer un worktree, refuser sa suppression avec des changements, puis le s
   expect(list.map((w) => w.branch)).toEqual(['main', 'feat/1-essai'])
 
   writeFileSync(join(path, 'travail.txt'), 'x')
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(linked).toContainText('1 non suivi')
   const refused = await page.evaluate(
     ({ projectId, path }) => window.wu.invoke('worktrees:remove', { projectId, path, force: false }),
     { projectId: project.id, path },
@@ -49,11 +62,12 @@ test('créer un worktree, refuser sa suppression avec des changements, puis le s
   expect(refused).toEqual({ removed: false, dirtyFiles: 1 })
   expect(existsSync(path)).toBe(true)
 
-  const removed = await page.evaluate(
-    ({ projectId, path }) => window.wu.invoke('worktrees:remove', { projectId, path, force: true }),
-    { projectId: project.id, path },
-  )
-  expect(removed).toEqual({ removed: true, dirtyFiles: 0 })
+  await linked.click()
+  await sidebar.getByRole('button', { name: 'Supprimer le worktree' }).click()
+  const confirmation = page.getByRole('dialog', { name: 'Supprimer le worktree' })
+  await expect(confirmation).toContainText('1 fichier')
+  await confirmation.getByRole('button', { name: 'Supprimer et perdre les modifications' }).click()
+  await expect(linked).toHaveCount(0)
   expect(existsSync(path)).toBe(false)
 
   const outside = await page.evaluate(

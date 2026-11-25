@@ -91,3 +91,29 @@ test('ouvrir un terminal, y taper, le découper, survivre au rechargement, ferme
     .toContain('inconnu')
   await app.close()
 })
+
+test('un collage plus long que la borne du canal arrive entier, dans l’ordre', async () => {
+  const repo = join(dir, 'collage')
+  mkdirSync(repo)
+  execFileSync('git', ['init', '-q', repo])
+  const app = await _electron.launch({
+    args: ['out/main/index.js'],
+    env: { ...process.env, XDG_DATA_HOME: join(dir, 'data'), XDG_CONFIG_HOME: join(dir, 'config') },
+  })
+  const page = await app.firstWindow()
+  await page.evaluate((path) => window.wu.invoke('projects:add', { path }), repo)
+  await page.reload()
+  await page.getByRole('button', { name: 'Terminal dans collage' }).click()
+  const host = page.locator('.terminal-host').first()
+  const id = (await host.getAttribute('data-terminal-id'))!
+  await host.click()
+  // Mode non canonique : sinon le TTY Linux tronque toute ligne au-delà de 4 096 caractères.
+  await page.keyboard.type('stty -icanon -echo; echo pret-$((1+1)); head -c 70000 | wc -c; stty sane\n')
+  // Coller seulement quand head lit déjà : sinon le collage arrive dans l'éditeur de ligne du shell.
+  await expect.poll(() => screenOf(page, id)).toMatch(/^pret-2$/m)
+  // 70 000 caractères : au-delà de la borne de 65 536 du canal terminal:write, il faut découper.
+  await app.evaluate(({ clipboard }) => clipboard.writeText('x'.repeat(70000)), undefined)
+  await page.keyboard.press('Control+Shift+V')
+  await expect.poll(() => screenOf(page, id), { timeout: 15_000 }).toMatch(/^70000$/m)
+  await app.close()
+})

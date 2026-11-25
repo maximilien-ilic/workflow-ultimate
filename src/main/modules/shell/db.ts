@@ -1,13 +1,14 @@
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { appDirectory } from './paths'
 
 export type Migration = { version: number; name: string; sql: string }
 
-export function dataDir(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
-  return join(env['XDG_DATA_HOME'] || join(home, '.local/share'), 'workflow-ultimate')
-}
+// Même calcul que le diagnostic (paths.ts) : une seule destination possible pour app.db.
+export const dataDir = (env: NodeJS.ProcessEnv = process.env, home = homedir()) =>
+  appDirectory('data', env, home)
 
 // Fichiers `NNN-nom.sql`, numérotés de 1 à n sans trou ni doublon.
 export function parseMigrations(files: Record<string, string>): Migration[] {
@@ -31,7 +32,8 @@ const userVersion = (db: DatabaseSync) =>
 
 // Une base migrée par une version plus récente de l'appli ne doit pas être réutilisée à l'aveugle.
 function assertNotNewer(current: number, migrations: Migration[]): void {
-  if (current < 0) throw new Error(`Base en version ${current} : valeur impossible, base non créée par l'appli`)
+  if (current < 0)
+    throw new Error(`Base en version ${current} : valeur impossible, base non créée par l'appli`)
   if (current > migrations.length)
     throw new Error(`Base en version ${current}, plus récente que l'appli (${migrations.length})`)
 }
@@ -51,7 +53,9 @@ export function migrate(db: DatabaseSync, migrations: Migration[]): void {
       }
       db.exec('COMMIT')
     } catch (error) {
-      db.exec('ROLLBACK')
+      // SQLite a pu annuler la transaction lui-même (INSERT OR ROLLBACK…) : un second ROLLBACK
+      // échouerait et masquerait la vraie cause.
+      if (db.isTransaction) db.exec('ROLLBACK')
       if (!m) throw error
       throw new Error(`Migration ${pad(m.version)}-${m.name} échouée : ${(error as Error).message}`, {
         cause: error,
@@ -61,15 +65,34 @@ export function migrate(db: DatabaseSync, migrations: Migration[]): void {
   }
 }
 
+// Réessaie une opération tant que la base est verrouillée ailleurs, dans la limite de `ms`
+// (attente synchrone : seulement au démarrage, avant toute fenêtre).
+function whileBusy(operation: () => void, ms: number): void {
+  const deadline = Date.now() + ms
+  for (;;) {
+    try {
+      return operation()
+    } catch (error) {
+      if (!/database is locked|SQLITE_BUSY/i.test((error as Error).message) || Date.now() > deadline)
+        throw error
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50)
+    }
+  }
+}
+
 export function openDatabase(file: string, migrations: Migration[]): DatabaseSync {
   mkdirSync(dirname(file), { recursive: true })
   const db = new DatabaseSync(file)
   try {
+    // Politique d'attente dès l'ouverture : un verrou brièvement tenu ailleurs ne fait pas échouer le démarrage.
+    db.exec('PRAGMA busy_timeout = 5000')
     // Vérifications avant toute écriture : on ne touche pas une base corrompue ou trop récente.
     const { quick_check } = db.prepare('PRAGMA quick_check').get() as { quick_check: string }
     if (quick_check !== 'ok') throw new Error(`Base corrompue (${file}) : ${quick_check}`)
     assertNotNewer(userVersion(db), migrations)
-    db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
+    // Le passage en WAL renvoie SQLITE_BUSY sans passer par busy_timeout : on réessaie nous-mêmes.
+    whileBusy(() => db.exec('PRAGMA journal_mode = WAL'), 5000)
+    db.exec('PRAGMA foreign_keys = ON')
     migrate(db, migrations)
     return db
   } catch (error) {

@@ -6,8 +6,10 @@ const exec = promisify(execFile)
 
 test('routes a second launch to the existing window', async () => {
   const testInfo = test.info()
-  // shortcut: le runner Ubuntu ne peut pas initialiser le sandbox Chromium, retirer le flag quand il le pourra.
-  const args = ['--no-sandbox', 'out/main/index.js', `--user-data-dir=${testInfo.outputPath('profile')}`]
+  // shortcut: le runner Ubuntu de la CI ne peut pas initialiser le sandbox Chromium ; en local, le sandbox
+  // reste actif (AGENTS.md). Retirer le flag quand le runner le pourra.
+  const noSandbox = process.env['CI'] ? ['--no-sandbox'] : []
+  const args = [...noSandbox, 'out/main/index.js', `--user-data-dir=${testInfo.outputPath('profile')}`]
   const env = {
     ...process.env,
     XDG_CONFIG_HOME: testInfo.outputPath('config'),

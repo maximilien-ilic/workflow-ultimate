@@ -1,18 +1,9 @@
 import { execFile, type ExecFileException } from 'node:child_process'
 import { promisify } from 'node:util'
+import type { GitStatus } from '../../../shared/ipc'
 import { gitEnv } from './git-env'
 
 const exec = promisify(execFile)
-
-export type GitStatus = {
-  branch: string | null
-  shortSha: string | null
-  modified: number
-  staged: number
-  untracked: number
-  ahead: number | null
-  behind: number | null
-}
 
 export function parseGitStatus(output: string): GitStatus {
   const status: GitStatus = {
