@@ -61,10 +61,22 @@ export function listProjects(db: DatabaseSync): Project[] {
   )
 }
 
-export function getProject(db: DatabaseSync, id: string): Project {
+function projectRow(db: DatabaseSync, id: string): Row {
   const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as Row | undefined
   if (!row) throw new Error(`Projet ${id} inconnu`)
-  return toProject(row)
+  return row
+}
+
+export const getProject = (db: DatabaseSync, id: string): Project => toProject(projectRow(db, id))
+
+// Le dossier enregistré peut avoir changé (dépôt supprimé, dossier recréé dans un autre dépôt) :
+// avant d'y lancer une commande, on vérifie qu'il mène toujours au même dossier git commun.
+export async function checkedProjectPath(db: DatabaseSync, id: string): Promise<string> {
+  const row = projectRow(db, id)
+  const { gitDir } = await repoInfo(row.path)
+  if (gitDir !== row.git_dir)
+    throw new Error(`${row.path} n'est plus le dépôt du projet ${row.name} : retirez-le puis ajoutez-le de nouveau.`)
+  return row.path
 }
 
 export function removeProject(db: DatabaseSync, id: string): void {

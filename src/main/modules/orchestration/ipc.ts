@@ -26,7 +26,7 @@ export function registerTaskHandlers(db: DatabaseSync): void {
     return listOf(projectId)
   })
   handle('tasks:importIssues', async ({ projectId }) => {
-    await syncIssues(db, projectId, getProject(db, projectId).path)
+    await syncIssues(db, projectId)
     return tasks.list(projectId)
   })
 }

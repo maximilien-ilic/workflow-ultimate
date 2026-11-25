@@ -7,7 +7,9 @@ const absolutePath = z.string().startsWith('/', 'chemin absolu attendu').max(409
 const dimension = z.number().int().min(1).max(1000)
 // Colonnes du tableau de tâches, dans l'ordre d'affichage.
 export const taskStatuses = ['todo', 'doing', 'review', 'done'] as const
-const taskDraft = { title: z.string().trim().min(1, 'titre vide').max(256), body: z.string().max(20_000) }
+// Partagée avec l'import des issues GitHub : une tâche importée doit rester éditable.
+export const TASK_BODY_MAX_LENGTH = 20_000
+const taskDraft = { title: z.string().trim().min(1, 'titre vide').max(256), body: z.string().max(TASK_BODY_MAX_LENGTH) }
 const taskId = z.number().int().positive()
 
 export const ipcRequestSchemas = {

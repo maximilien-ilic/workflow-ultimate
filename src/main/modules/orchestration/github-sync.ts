@@ -1,5 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { z } from 'zod'
+import { TASK_BODY_MAX_LENGTH } from '../../../shared/ipc'
+import { checkedProjectPath } from '../projects/registry'
 import { gh } from '../review/pull-request'
 import { createTasks, type IssueTask } from './tasks'
 
@@ -24,12 +26,12 @@ async function fetchIssues(repo: string): Promise<Issue[]> {
 }
 
 const toTask = ({ number, title, body, state, url }: Issue): IssueTask => ({
-  title, body, status: state === 'CLOSED' ? 'done' : 'todo', issueNumber: number, issueUrl: url,
+  title, body: body.slice(0, TASK_BODY_MAX_LENGTH), status: state === 'CLOSED' ? 'done' : 'todo', issueNumber: number, issueUrl: url,
 })
 
 // Les issues sont liées par numéro : réimporter met à jour les tâches existantes.
-export async function syncIssues(db: DatabaseSync, projectId: string, repo: string): Promise<void> {
-  const issues = await fetchIssues(repo)
+export async function syncIssues(db: DatabaseSync, projectId: string): Promise<void> {
+  const issues = await fetchIssues(await checkedProjectPath(db, projectId))
   const tasks = createTasks(db)
   for (const issue of issues) tasks.saveIssue(projectId, toTask(issue))
 }
