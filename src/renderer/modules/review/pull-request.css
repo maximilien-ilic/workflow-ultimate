@@ -1,0 +1,19 @@
+.pull-request-panel {
+  overflow-wrap: anywhere;
+}
+
+.pull-request-panel form,
+.pull-request-panel label {
+  display: grid;
+  gap: var(--space, 4px);
+}
+
+.pull-request-panel form {
+  margin-block-end: calc(2 * var(--space, 4px));
+}
+
+.pull-request-panel input,
+.pull-request-panel textarea {
+  box-sizing: border-box;
+  width: 100%;
+}

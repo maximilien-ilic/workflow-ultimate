@@ -5,6 +5,7 @@ import { OrcaImportDialog } from './modules/projects/OrcaImportDialog'
 import { useWorkspace } from './modules/projects/workspace'
 import { ShellLayout } from './modules/shell/ShellLayout'
 import { AgentOverview } from './modules/agents/AgentOverview'
+import { PullRequestPanel } from './modules/review/PullRequestPanel'
 import { ReviewView } from './modules/review/ReviewView'
 import { TerminalArea } from './modules/terminals/TerminalArea'
 import { ProjectPicker } from './modules/projects/ProjectPicker'
@@ -16,8 +17,18 @@ export function App() {
   useEffect(() => {
     window.wu.invoke('app:info', {}).then(setInfo, (e: unknown) => setError(String(e)))
   }, [])
+  const selection = workspace.selected
   return (
-    <ShellLayout leftPanel={<ProjectSidebar workspace={workspace} />}>
+    <ShellLayout
+      leftPanel={<ProjectSidebar workspace={workspace} />}
+      rightPanel={selection && (
+        <PullRequestPanel
+          key={`${selection.project.id}:${selection.worktree.path}:${selection.worktree.branch}`}
+          projectId={selection.project.id}
+          worktreePath={selection.worktree.path}
+        />
+      )}
+    >
       <ProjectPicker workspace={workspace} />
       <main>
         <h1>Workflow Ultimate</h1>

@@ -71,6 +71,14 @@ export const ipcRequestSchemas = {
     })
     .strict(),
   'review:push': z.object({ projectId: z.uuid(), worktreePath: absolutePath }).strict(),
+  'review:pr': z.object({ projectId: z.uuid(), worktreePath: absolutePath }).strict(),
+  'review:createPr': z.object({
+    projectId: z.uuid(),
+    worktreePath: absolutePath,
+    branch: z.string().min(1).max(4096),
+    title: z.string().trim().min(1).max(256),
+    body: z.string().max(20_000),
+  }).strict(),
   'review:file': z
     .object({
       projectId: z.uuid(),
@@ -86,6 +94,19 @@ export const ipcRequestSchemas = {
     })
     .strict(),
 } satisfies Record<string, z.ZodType>
+
+export type PullRequestCheck = { name: string; bucket: 'pass' | 'fail' | 'pending' | 'skipping' | 'cancel' }
+export type PullRequestContext =
+  | { kind: 'unavailable'; message: string }
+  | { kind: 'draft'; branch: string; title: string; body: string }
+  | {
+      kind: 'existing'
+      number: number
+      title: string
+      url: string
+      state: 'OPEN' | 'CLOSED' | 'MERGED'
+      checks: PullRequestCheck[]
+    }
 
 export type AppInfo = { name: string; version: string; electron: string; node: string }
 export type Project = { id: string; path: string; name: string; addedAt: number }
@@ -152,6 +173,8 @@ interface IpcResponses {
   'review:file': { binary: boolean; before: string; after: string }
   'review:commit': { sha: string }
   'review:push': { output: string }
+  'review:pr': PullRequestContext
+  'review:createPr': { url: string }
   'diagnostics:report': string
   'settings:get': Settings
   'settings:set': null
