@@ -30,6 +30,8 @@ function setup() {
 
 const id = '3b241101-e2bb-4255-8caf-4136c566a962'
 const create = () => call('terminal:create', { id, cwd: '/tmp', cols: 80, rows: 24 })
+const overflowingData = 'x'.repeat(100_001)
+const overflowingEvent = { type: 'data', id, data: overflowingData, offset: overflowingData.length } as const
 
 beforeEach(() => {
   handlers.clear()
@@ -41,6 +43,8 @@ describe('pont des terminaux', () => {
   it("après un délai dépassé, l'id reste réservé jusqu'à la fermeture confirmée", async () => {
     const { sent, emit } = setup()
     const first = expect(create()).rejects.toThrow(/délai dépassé/) // attaché avant le rejet
+    emit(overflowingEvent)
+    expect(sent.at(-1)).toEqual({ type: 'pause', id })
     await vi.advanceTimersByTimeAsync(5001)
     await first
     expect(sent.at(-1)).toEqual({ type: 'kill', id })
@@ -54,6 +58,8 @@ describe('pont des terminaux', () => {
     expect(sent.at(-1)).toMatchObject({ type: 'spawn', id })
     emit({ type: 'spawned', id, pid: 2 })
     await expect(second).resolves.toEqual({ pid: 2 })
+    emit(overflowingEvent)
+    expect(sent.at(-1)).toEqual({ type: 'pause', id })
   })
 
   it("un lancement refusé par le pty-host libère l'id tout de suite", async () => {
@@ -67,12 +73,14 @@ describe('pont des terminaux', () => {
   })
 
   it('un redémarrage du pty-host perd les terminaux : attentes rejetées, fenêtre et agents prévenus', async () => {
-    const { host, terminals, emit } = setup()
+    const { host, terminals, emit, sent } = setup()
     const exits: [string, number][] = []
     terminals.onExit((tid, code) => exits.push([tid, code]))
     const running = create()
     emit({ type: 'spawned', id, pid: 1 })
     await running
+    emit(overflowingEvent)
+    expect(sent.at(-1)).toEqual({ type: 'pause', id })
     const other = '9c858901-8a57-4791-81fe-4c455b099bc9'
     const pending = expect(
       call('terminal:create', { id: other, cwd: '/tmp', cols: 80, rows: 24 }),
@@ -90,6 +98,8 @@ describe('pont des terminaux', () => {
     await vi.advanceTimersByTimeAsync(0)
     emit({ type: 'spawned', id, pid: 2 })
     await expect(again).resolves.toEqual({ pid: 2 })
+    emit(overflowingEvent)
+    expect(sent.at(-1)).toEqual({ type: 'pause', id })
   })
 
   it('après abandon du pty-host, tout lancement échoue tout de suite', async () => {

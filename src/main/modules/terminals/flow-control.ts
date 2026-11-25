@@ -28,6 +28,10 @@ export class FlowControl {
     this.pending.delete(id)
   }
 
+  clear(): void {
+    this.pending.clear()
+  }
+
   private state(id: string) {
     let state = this.pending.get(id)
     if (!state) this.pending.set(id, (state = { unacked: 0, paused: false }))
