@@ -30,7 +30,7 @@ const statusText: Record<ChangedFile['status'], string> = {
 }
 
 const MESSAGE_BINARY = 'Fichier binaire ou trop gros : pas de diff affiché.'
-const MESSAGE_NO_WORKTREE = "Ouvrez d'abord un terminal dans un worktree d'un projet."
+const MESSAGE_NO_WORKTREE = 'Sélectionnez un worktree dans la barre latérale.'
 
 function createDiffEditor(monaco: Monaco, container: HTMLElement, inline: boolean) {
   return monaco.editor.createDiffEditor(container, {
@@ -80,7 +80,7 @@ async function activeWorktree(): Promise<{ projectId: string; worktreePath: stri
 }
 
 // Diff du worktree actif (Ctrl+Shift+G) : fichiers à gauche, diff Monaco à droite, Alt+↓/↑ pour naviguer.
-export function ReviewView() {
+export function ReviewView({ projectId, worktreePath }: { projectId?: string; worktreePath?: string }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const host = useRef<HTMLDivElement>(null)
   const editor = useRef<import('monaco-editor').editor.IStandaloneDiffEditor | null>(null)
@@ -111,6 +111,7 @@ export function ReviewView() {
   }, [])
 
   const open = useCallback(async () => {
+    const fromTerminal = document.activeElement?.closest('.terminal-host')
     const request = ++opening.current
     const modal = dialog.current
     if (!modal) return
@@ -119,14 +120,15 @@ export function ReviewView() {
     setMessage('')
     setFileMessage('')
     try {
-      const wt = await activeWorktree()
+      const selection = projectId && worktreePath ? { projectId, worktreePath } : null
+      const wt = fromTerminal ? (await activeWorktree()) ?? selection : selection
       if (request !== opening.current || !modal.open) return
       if (wt) await loadChanges(wt, request)
       else setMessage(MESSAGE_NO_WORKTREE)
     } catch (e) {
       if (request === opening.current && modal.open) setMessage(String(e))
     }
-  }, [loadChanges])
+  }, [loadChanges, projectId, worktreePath])
 
   const toggleIncluded = (path: string) =>
     setExcluded((previous) => {
