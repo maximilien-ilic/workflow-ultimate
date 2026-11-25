@@ -27,18 +27,39 @@ let dir: string
 let db: DatabaseSync
 const spawn = vi.fn()
 const writeConfirmed = vi.fn()
+const onStateChange = vi.fn()
 let agents: AgentSessions
 beforeEach(() => {
   handlers.clear()
   spawn.mockReset()
   writeConfirmed.mockReset()
+  onStateChange.mockReset()
   dir = mkdtempSync(join(tmpdir(), 'wu-sessions-'))
   db = openDatabase(join(dir, 'app.db'), migrations)
   agents = registerAgentHandlers(db, { spawn, writeConfirmed, onExit: () => {} } as never, {
     notify: { node: '/n', script: '/s' },
     socketPath: '/tmp/x.sock',
+    onStateChange,
     bins: { 'claude-code': 'claude', codex: 'codex' },
   })
+})
+
+it('publie la transition avec le terminal associé et ignore les états répétés', async () => {
+  spawn.mockResolvedValue(1)
+  const terminalId = crypto.randomUUID()
+  const session = (await call('agents:start', { terminalId, cwd: dir, agent: 'claude-code', ...size })) as {
+    id: string
+  }
+  const hook = { agent: 'claude-code' as const, sessionId: session.id, ts: Date.now() }
+  agents.onSocketEvent({ ...hook, event: { type: 'needs-input' } })
+  agents.onSocketEvent({ ...hook, event: { type: 'needs-input' } })
+  expect(onStateChange).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({
+      id: session.id,
+      terminalId,
+      state: 'waiting',
+    }),
+  )
 })
 
 it('remet un message de revue uniquement à un agent disponible dans le même worktree', async () => {

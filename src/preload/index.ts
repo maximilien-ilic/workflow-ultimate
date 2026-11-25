@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AgentEvent, IpcChannel, IpcRequest, IpcResponse, TerminalEvent } from '../shared/ipc'
+import type { AgentDesktopEvent, AgentEvent, IpcChannel, IpcRequest, IpcResponse, TerminalEvent } from '../shared/ipc'
 
 const api = {
   invoke: <C extends IpcChannel>(channel: C, req: IpcRequest<C>): Promise<IpcResponse<C>> =>
@@ -11,6 +11,9 @@ const api = {
     const wrapped = (_: unknown, event: TerminalEvent) => listener(event)
     ipcRenderer.on('terminal:event', wrapped)
     return () => ipcRenderer.removeListener('terminal:event', wrapped)
+  },
+  onAgentDesktopEvent: (listener: (event: AgentDesktopEvent) => void): void => {
+    ipcRenderer.on('agents:desktop', (_event, event: AgentDesktopEvent) => listener(event))
   },
   // Changements d'état des agents lancés par cette fenêtre.
   onAgentEvent: (listener: (event: AgentEvent) => void): (() => void) => {

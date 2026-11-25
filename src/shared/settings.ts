@@ -32,6 +32,7 @@ export const settingsSchema = z.strictObject({
   orcaImport: orcaImport.optional(),
 })
 export type Settings = z.output<typeof settingsSchema>
+export type StoredSettings = Settings & { notificationSound?: boolean }
 
 function storedPanel(defaults: Settings['layout']['left']) {
   return z
@@ -49,9 +50,10 @@ const storedSettings = z
       .catch(defaultSettings.layout),
     keybindings: keybindings.catch({}).default({}),
     orcaImport: orcaImport.optional().catch(undefined),
+    notificationSound: z.boolean().optional().catch(undefined),
   })
   .catch(defaultSettings)
 
-export function decodeSettings(value: unknown): Settings {
+export function decodeSettings(value: unknown): StoredSettings {
   return storedSettings.parse(value)
 }
