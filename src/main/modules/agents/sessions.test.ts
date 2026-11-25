@@ -100,3 +100,55 @@ describe('sessions refusées par le PTY', () => {
     })
   })
 })
+
+describe('envoi de commentaires à Codex', () => {
+  async function startReadyCodex() {
+    spawn.mockResolvedValue(1)
+    const terminalId = crypto.randomUUID()
+    const { id } = (await call('agents:start', { terminalId, cwd: dir, agent: 'codex', ...size })) as { id: string }
+    const finishTurn = () => agents.onSocketEvent({
+      agent: 'codex', sessionId: id, ts: Date.now(), event: { type: 'turn-finished' },
+    })
+    finishTurn()
+    return { id, terminalId, finishTurn }
+  }
+
+  it('refuse un deuxième lot jusqu’à la notification de fin de tour', async () => {
+    const { id, terminalId, finishTurn } = await startReadyCodex()
+    const owner = event.sender as never
+    let finishWrite!: () => void
+    writeConfirmed.mockReturnValueOnce(new Promise<void>((resolve) => { finishWrite = resolve }))
+    const transmission = agents.writeReview(id, dir, owner, 'Premier lot')
+    await expect(agents.writeReview(id, dir, owner, 'Deuxième lot')).rejects.toThrow(/agent disponible/)
+    finishWrite()
+    await transmission
+
+    expect(await call('agents:list', {})).toMatchObject([{ id, state: 'working' }])
+    expect(event.sender.send).toHaveBeenLastCalledWith('agent:event', {
+      sessionId: id, terminalId, state: 'working',
+    })
+    await expect(agents.writeReview(id, dir, owner, 'Deuxième lot')).rejects.toThrow(/agent disponible/)
+    expect(writeConfirmed).toHaveBeenCalledExactlyOnceWith(terminalId, owner, 'Premier lot')
+
+    finishTurn()
+    expect(await call('agents:list', {})).toMatchObject([{ id, state: 'done' }])
+    await expect(agents.writeReview(id, dir, owner, 'Deuxième lot')).resolves.toBeUndefined()
+  })
+
+  it('rétablit la disponibilité après une écriture refusée', async () => {
+    const { id, terminalId } = await startReadyCodex()
+    const owner = event.sender as never
+    let rejectWrite!: (error: Error) => void
+    writeConfirmed.mockReturnValueOnce(new Promise<void>((_resolve, reject) => { rejectWrite = reject }))
+    const transmission = agents.writeReview(id, dir, owner, 'Premier lot')
+    const failure = expect(transmission).rejects.toThrow('Écriture PTY refusée')
+    const duringWrite = await call('agents:list', {})
+    rejectWrite(new Error('Écriture PTY refusée'))
+    await failure
+
+    expect(duringWrite).toMatchObject([{ id, state: 'working' }])
+    expect(await call('agents:list', {})).toMatchObject([{ id, state: 'done' }])
+    expect(event.sender.send).toHaveBeenLastCalledWith('agent:event', { sessionId: id, terminalId, state: 'done' })
+    await expect(agents.writeReview(id, dir, owner, 'Premier lot')).resolves.toBeUndefined()
+  })
+})

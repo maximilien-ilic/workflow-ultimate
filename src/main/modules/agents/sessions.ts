@@ -152,7 +152,16 @@ export function registerAgentHandlers(
       const saved = row(sessionId)
       if (!session || session.owner !== owner || saved?.cwd !== cwd || saved.state !== 'done')
         throw new Error('Le message doit être envoyé à un agent disponible dans ce worktree.')
-      await terminals.writeConfirmed(session.terminalId, owner, message)
+      // Codex signale la fin du tour. L'envoi depuis la revue donne aussi son point de départ.
+      const codex = saved.agent === 'codex'
+      if (codex) apply(sessionId, { type: 'prompt-submitted' })
+      try {
+        await terminals.writeConfirmed(session.terminalId, owner, message)
+      } catch (error) {
+        if (codex && live.get(sessionId) === session && row(sessionId)?.state === 'working')
+          apply(sessionId, { type: 'turn-finished' })
+        throw error
+      }
     },
     sessionAgent: (id) => (pendingCodexIds.has(id) ? 'codex' : live.has(id) ? row(id)?.agent : undefined),
     onSocketEvent({ agent, sessionId, event, externalId }) {
