@@ -110,10 +110,19 @@ export const ipcRequestSchemas = {
   'tasks:create': z.object({ projectId: z.uuid(), ...taskDraft }).strict(),
   'tasks:update': z.object({ projectId: z.uuid(), id: taskId, ...taskDraft }).strict(),
   'tasks:move': z.object({ projectId: z.uuid(), id: taskId, status: z.enum(taskStatuses) }).strict(),
+  // Importe ou met à jour les issues GitHub du projet (via `gh`).
+  'tasks:importIssues': z.object({ projectId: z.uuid() }).strict(),
 } satisfies Record<string, z.ZodType>
 
 export type TaskStatus = (typeof taskStatuses)[number]
-export type Task = { id: number; title: string; body: string; status: TaskStatus }
+export type Task = {
+  id: number
+  title: string
+  body: string
+  status: TaskStatus
+  issueNumber: number | null // issue GitHub importée, sinon null
+  issueUrl: string | null
+}
 
 export type ReviewComment = { id: number; path: string; line: number; body: string; sentAt: number | null }
 export type PullRequestCheck = { name: string; bucket: 'pass' | 'fail' | 'pending' | 'skipping' | 'cancel' }
@@ -203,6 +212,7 @@ interface IpcResponses {
   'tasks:create': Task[]
   'tasks:update': Task[]
   'tasks:move': Task[]
+  'tasks:importIssues': Task[]
   'diagnostics:report': string
   'settings:get': Settings
   'settings:set': null

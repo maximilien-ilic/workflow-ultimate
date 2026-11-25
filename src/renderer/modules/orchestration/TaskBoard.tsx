@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { taskStatuses, type Task, type TaskStatus } from '../../../shared/ipc'
 import { registerCommand } from '../palette/commands'
 
@@ -52,6 +52,7 @@ function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
   }
   return (
     <li>
+      {task.issueNumber && <span>#{task.issueNumber} </span>}
       <strong>{task.title}</strong>
       {task.body && <p>{task.body}</p>}
       {moveButton(-1)}
@@ -83,37 +84,57 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
   const [error, setError] = useState('')
   const [lastMove, setLastMove] = useState<Move | null>(null)
 
-  const apply = (request: Promise<Task[]>) => {
-    setError('')
-    request.then(setTasks, (reason: unknown) => setError(String(reason)))
-  }
+  const [importing, setImporting] = useState(false)
 
-  useEffect(
-    () =>
-      registerCommand({
-        id: 'orchestration.tasks',
-        title: 'Tableau de tâches',
-        keybinding: 'Ctrl+Shift+K',
-        run() {
-          dialog.current?.showModal()
-          if (projectId) apply(window.wu.invoke('tasks:list', { projectId }))
-        },
-      }),
-    [projectId],
-  )
+  const apply = useCallback((request: Promise<Task[]>) => {
+    setError('')
+    return request.then(setTasks, (reason: unknown) => setError(String(reason)))
+  }, [])
+  const importIssues = useCallback((id: string) => {
+    setImporting(true)
+    void apply(window.wu.invoke('tasks:importIssues', { projectId: id })).finally(() => setImporting(false))
+  }, [apply])
+
+  useEffect(() => {
+    const showBoard = (load: (id: string) => void) => {
+      if (!dialog.current?.open) dialog.current?.showModal()
+      if (projectId) load(projectId)
+    }
+    const removeBoard = registerCommand({
+      id: 'orchestration.tasks',
+      title: 'Tableau de tâches',
+      keybinding: 'Ctrl+Shift+K',
+      run: () => showBoard((id) => void apply(window.wu.invoke('tasks:list', { projectId: id }))),
+    })
+    const removeImport = registerCommand({
+      id: 'orchestration.import-issues',
+      title: 'Importer les issues GitHub',
+      run: () => showBoard(importIssues),
+    })
+    return () => {
+      removeBoard()
+      removeImport()
+    }
+  }, [projectId, apply, importIssues])
 
   const move = (task: Task, direction: Direction) => {
     const status = neighbour(task.status, direction)
     if (!projectId || !status) return
     setLastMove({ id: task.id, direction })
-    apply(window.wu.invoke('tasks:move', { projectId, id: task.id, status }))
+    void apply(window.wu.invoke('tasks:move', { projectId, id: task.id, status }))
   }
 
   return (
     <dialog ref={dialog} aria-label="Tableau de tâches">
       <h2>Tâches</h2>
       {!projectId && <p>Aucun projet sélectionné.</p>}
-      {projectId && <NewTaskForm onCreate={(draft) => apply(window.wu.invoke('tasks:create', { projectId, ...draft }))} />}
+      {projectId && <NewTaskForm onCreate={(draft) => void apply(window.wu.invoke('tasks:create', { projectId, ...draft }))} />}
+      {projectId && (
+        <button type="button" onClick={() => importIssues(projectId)} disabled={importing}>
+          Importer les issues GitHub
+        </button>
+      )}
+      <p role="status">{importing ? 'Import des issues…' : ''}</p>
       {error && <p role="alert">{error}</p>}
       {projectId && taskStatuses.map((status) => (
         <section key={status} aria-label={columnTitles[status]}>
@@ -121,7 +142,7 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
           <ul>
             {tasks.filter((task) => task.status === status).map((task) => (
               <TaskCard key={task.id} task={task} lastMove={lastMove} onMove={(direction) => move(task, direction)}
-                onSave={(draft) => apply(window.wu.invoke('tasks:update', { projectId, id: task.id, ...draft }))} />
+                onSave={(draft) => void apply(window.wu.invoke('tasks:update', { projectId, id: task.id, ...draft }))} />
             ))}
           </ul>
         </section>
