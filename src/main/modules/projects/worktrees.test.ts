@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -56,14 +57,55 @@ describe('worktrees', () => {
     expect(git(path, 'branch', '--show-current').trim()).toBe('existante')
   })
 
-  it('refuse un nom de branche invalide et un dossier déjà pris', async () => {
+  it('refuse un nom de branche invalide', async () => {
     await expect(createWorktree(repo, workspaces, { branch: 'a..b', create: true })).rejects.toThrow(
       /invalide/,
     )
-    mkdirSync(join(workspaces, 'app', 'pris'), { recursive: true })
-    await expect(createWorktree(repo, workspaces, { branch: 'pris', create: true })).rejects.toThrow(
-      /existe déjà/,
+  })
+
+  it('conserve le worktree historique quand deux branches donnent le même nom de dossier', async () => {
+    const existing = join(workspaces, 'app', 'feat-sujet')
+    mkdirSync(join(workspaces, 'app'), { recursive: true })
+    git(repo, 'worktree', 'add', '-b', 'feat/sujet', existing)
+
+    const created = await createWorktree(repo, workspaces, { branch: 'feat-sujet', create: true })
+
+    expect(created).not.toBe(existing)
+    expect(await listWorktrees(repo)).toEqual(
+      expect.arrayContaining([
+        { path: existing, branch: 'feat/sujet', main: false },
+        { path: created, branch: 'feat-sujet', main: false },
+      ]),
     )
+    expect(git(existing, 'branch', '--show-current').trim()).toBe('feat/sujet')
+  })
+
+  it('crée simultanément une branche homonyme dans deux dépôts de même nom', async () => {
+    const otherRepo = join(dir, 'autre', 'app')
+    git(dir, 'clone', repo, otherRepo)
+    const [first, second] = await Promise.all(
+      [repo, otherRepo].map((project) =>
+        createWorktree(project, workspaces, { branch: 'sujet', create: true }),
+      ),
+    )
+
+    expect(first).not.toBe(second)
+    expect(await listWorktrees(repo)).toContainEqual({ path: first, branch: 'sujet', main: false })
+    expect(await listWorktrees(otherRepo)).toContainEqual({ path: second, branch: 'sujet', main: false })
+  })
+
+  it.each([false, true])('préserve le dossier préexistant (vide : %s)', async (empty) => {
+    const existing = join(workspaces, 'app', 'pris')
+    const sentinel = join(existing, 'sentinelle')
+    mkdirSync(existing, { recursive: true })
+    if (!empty) writeFileSync(sentinel, 'à garder')
+
+    const created = await createWorktree(repo, workspaces, { branch: 'pris', create: true })
+
+    expect(created).not.toBe(existing)
+    expect(existsSync(existing)).toBe(true)
+    expect(existsSync(join(existing, '.git'))).toBe(false)
+    if (!empty) expect(readFileSync(sentinel, 'utf8')).toBe('à garder')
   })
 
   it('supprime un worktree propre et nettoie git', async () => {

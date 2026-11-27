@@ -1,7 +1,6 @@
-import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { mkdir, realpath } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { mkdir, mkdtemp, realpath, rmdir } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import type { Worktree } from '../../../shared/ipc'
 import { runGit } from './git-env'
 
@@ -65,18 +64,28 @@ export async function createWorktree(
   } catch {
     throw new Error(`Nom de branche invalide : ${opts.branch}`)
   }
-  const wanted = join(workspaces, basename(repo), opts.branch.replaceAll('/', '-'))
-  await mkdir(dirname(wanted), { recursive: true })
+  const parent = join(workspaces, basename(repo))
+  await mkdir(parent, { recursive: true })
   // Chemin réel du parent : git enregistre un chemin sans lien symbolique (HOME peut en être un),
   // ce qui permet à removeWorktree de refuser tout chemin redirigé.
-  const path = join(await realpath(dirname(wanted)), basename(wanted))
-  if (existsSync(path)) throw new Error(`${path} existe déjà`)
+  const realParent = await realpath(parent)
+  const name = opts.branch.replaceAll('/', '-')
+  let path = join(realParent, name)
+  try {
+    // Réserver le dossier avant git, qui accepterait un dossier vide déjà présent.
+    await mkdir(path)
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== 'EEXIST') throw error
+    path = await mkdtemp(join(realParent, `${name.slice(0, 80)}-`))
+  }
   const args = opts.create
     ? ['worktree', 'add', '-b', opts.branch, path, ...(opts.base ? [opts.base] : [])]
     : ['worktree', 'add', path, opts.branch]
   try {
     await runGit(repo, args, 60_000)
   } catch (error) {
+    await rmdir(path).catch(() => {}) // Ne retirer que la réservation si elle est encore vide.
     throw new Error(
       `Création du worktree impossible : ${(error as { stderr?: string }).stderr?.trim() || error}`,
       { cause: error },
