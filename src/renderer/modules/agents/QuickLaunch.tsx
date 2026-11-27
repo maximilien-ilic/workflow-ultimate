@@ -5,7 +5,7 @@ import { requestAgentStart } from './agent-store'
 import './quick-launch.css'
 
 export function QuickLaunch() {
-  const { selected } = useWorkspace()
+  const { selected } = useWorkspace({ followSelection: true })
   const activeLabel = selected
     ? `Actif · ${selected.project.name} · ${worktreeLabel(selected.worktree)}`
     : 'Aucun worktree actif'
