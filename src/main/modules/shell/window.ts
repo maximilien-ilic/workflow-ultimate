@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+const RENDERER_RECOVERY_INTERVAL_MS = 30_000
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]'])
 
 // L'URL du serveur Vite n'est acceptée que hors build packagé et seulement en http local :
@@ -49,5 +50,17 @@ export function createRendererWindow(options: Electron.BrowserWindowConstructorO
 export function createMainWindow(): BrowserWindow {
   const window = createRendererWindow({ width: 1280, height: 800, title: 'Workflow Ultimate' })
   window.once('ready-to-show', () => window.show())
+  const contents = window.webContents
+  let lastRecovery = -Infinity
+  contents.on('render-process-gone', (_event, { reason }) => {
+    if (reason !== 'crashed' || contents.isDestroyed()) return
+    const now = performance.now()
+    if (now - lastRecovery < RENDERER_RECOVERY_INTERVAL_MS) {
+      console.error('Le renderer principal a de nouveau planté après sa recharge.')
+      return
+    }
+    lastRecovery = now
+    contents.reload()
+  })
   return window
 }
