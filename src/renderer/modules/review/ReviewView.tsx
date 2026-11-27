@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { ChangedFile } from '../../../shared/ipc'
+import type { ChangedFile, ReviewCommentSide } from '../../../shared/ipc'
 import { agentStore, startAgent } from '../agents/agent-store'
 import { registerCommand } from '../palette/commands'
 import { CommitForm } from './CommitForm'
-import { ReviewComments, type ReviewCommentEditor } from './ReviewComments'
+import { ReviewComments, type CommentAnchor, type ReviewCommentEditor } from './ReviewComments'
 import { terminalStore } from '../terminals/terminal-store'
 import './review.css'
 
@@ -40,6 +40,7 @@ function createDiffEditor(monaco: Monaco, container: HTMLElement, inline: boolea
     readOnly: true,
     automaticLayout: true,
     renderSideBySide: !inline,
+    useInlineViewWhenSpaceIsLimited: false,
     originalEditable: false,
     stickyScroll: { enabled: false }, // inutile pour lire un diff
   })
@@ -94,7 +95,7 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
   const inlineRef = useRef(inline)
   const [message, setMessage] = useState('')
   const [fileMessage, setFileMessage] = useState('')
-  const [anchor, setAnchor] = useState<{ file: ChangedFile; line: number; maxLine: number }>()
+  const [anchor, setAnchor] = useState<CommentAnchor & { file: ChangedFile }>()
   const commentEditor = useRef<ReviewCommentEditor>(null)
 
   const [excluded, setExcluded] = useState<Set<string>>(new Set()) // fichiers décochés pour le commit
@@ -180,7 +181,7 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
   useLayoutEffect(() => {
     if (!target || !file || !host.current) return
     let cancelled = false
-    let cursorListener: { dispose(): void } | undefined
+    const cursorListeners: { dispose(): void }[] = []
     const container = host.current
     const request = opening.current
     const stillSelected = () => !cancelled && request === opening.current && dialog.current?.open
@@ -198,13 +199,25 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
       if (!versions.binary) {
         editor.current ??= createDiffEditor(monaco, container, inlineRef.current)
         showVersions(monaco, editor.current, file.path, versions)
-        const side = file.status === 'deleted' ? editor.current.getOriginalEditor() : editor.current.getModifiedEditor()
-        const maxLine = side.getModel()?.getLineCount() ?? 1
-        setAnchor({ file, line: 1, maxLine })
-        cursorListener = side.onDidChangeCursorPosition(({ position }) => {
-          setAnchor({ file, line: position.lineNumber, maxLine })
-          commentEditor.current?.selectLine(file.path, position.lineNumber)
-        })
+        const defaultSide = file.status === 'deleted' ? 'before' : 'after'
+        const bindSide = (side: ReviewCommentSide, pane: import('monaco-editor').editor.ICodeEditor) => {
+          const maxLine = pane.getModel()?.getLineCount() ?? 1
+          const selectLine = (line: number) => {
+            const position = { side, line, maxLine }
+            setAnchor({ file, ...position })
+            commentEditor.current?.selectLine(file.path, position)
+          }
+          if (side === defaultSide) setAnchor({ file, side, line: 1, maxLine })
+          cursorListeners.push(
+            pane.onDidChangeCursorPosition(({ position }) => selectLine(position.lineNumber)),
+            pane.onDidFocusEditorText(() => selectLine(pane.getPosition()?.lineNumber ?? 1)),
+            pane.onMouseDown(({ target: { position } }) => {
+              if (position) selectLine(position.lineNumber)
+            }),
+          )
+        }
+        if (file.status !== 'added') bindSide('before', editor.current.getOriginalEditor())
+        if (file.status !== 'deleted') bindSide('after', editor.current.getModifiedEditor())
       }
       setFileMessage(versions.binary ? MESSAGE_BINARY : '')
     })().catch((e: unknown) => {
@@ -212,7 +225,7 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
     })
     return () => {
       cancelled = true
-      cursorListener?.dispose()
+      for (const listener of cursorListeners) listener.dispose()
       if (editor.current) clearVersions(editor.current)
     }
   }, [target, file, compareHead])
@@ -293,8 +306,7 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
           projectId={target.projectId}
           worktreePath={target.worktreePath}
           filePath={file?.path}
-          line={activeAnchor?.line ?? 1}
-          maxLine={activeAnchor?.maxLine}
+          anchor={activeAnchor}
         />
       )}
       {target && (

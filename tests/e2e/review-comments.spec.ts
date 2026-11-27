@@ -11,8 +11,11 @@ test('les commentaires persistent et arrivent dans le PTY en un seul message', a
   mkdirSync(repo)
   const git = (...args: string[]) => execFileSync('git', args, { cwd: repo })
   git('init', '-qb', 'main')
-  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--allow-empty', '-qm', 'base')
-  writeFileSync(join(repo, 'a.txt'), 'première ligne\ndeuxième ligne\n')
+  const file = join(repo, 'a.txt')
+  writeFileSync(file, 'première ligne\nà supprimer\ndernière ligne\n')
+  git('add', 'a.txt')
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'base')
+  writeFileSync(file, 'nouvelle ligne\nune autre insertion\npremière ligne\ndernière ligne\n')
   const app = await _electron.launch({
     args: ['out/main/index.js'],
     env: {
@@ -41,25 +44,34 @@ test('les commentaires persistent et arrivent dans le PTY en un seul message', a
       await comments.getByRole('button', { name: 'Ajouter le commentaire' }).click()
       await expect(comments.getByText(message, { exact: false })).toBeVisible()
     }
-    await add('1', 'Vérifier ce mot.')
-    await review.locator('.editor.modified .view-line').filter({ hasText: /deuxième\s+ligne/ })
+    const lineInput = comments.getByLabel('Ligne', { exact: true })
+    await review.locator('.editor.original .view-line').filter({ hasText: /supprimer/ })
       .click({ position: { x: 10, y: 7 } })
-    await expect(comments.getByLabel('Ligne', { exact: true })).toHaveValue('2')
-    await add('2', 'Ajouter un exemple.')
+    await expect(lineInput).toHaveValue('2')
+    await expect(comments.getByText('Avant', { exact: true })).toBeVisible()
+    await add('2', 'Vérifier la suppression.')
+    await review.locator('.editor.modified .view-line').filter({ hasText: /première\s+ligne/ })
+      .click({ position: { x: 10, y: 7 } })
+    await expect(lineInput).toHaveValue('3')
+    await expect(comments.getByText('Après', { exact: true })).toBeVisible()
+    await page.keyboard.press('ArrowDown')
+    await expect(lineInput).toHaveValue('4')
+    await add('4', 'Ajouter un exemple.')
     const longComments = Array.from({ length: 6 }, (_, index) =>
       `${index + 1}. ${'界'.repeat(3_996)}`,
     )
     const [project] = await page.evaluate(() => window.wu.invoke('projects:list', {}))
     await page.evaluate(async ({ projectId, worktreePath, bodies }) => {
       for (const body of bodies)
-        await window.wu.invoke('review:addComment', { projectId, worktreePath, path: 'a.txt', line: 2, body })
+        await window.wu.invoke('review:addComment', { projectId, worktreePath, path: 'a.txt', side: 'after', line: 4, body })
     }, { projectId: project!.id, worktreePath: repo, bodies: longComments })
     await page.reload()
     await openReview()
-    await expect(comments.getByText('Vérifier ce mot.', { exact: false })).toBeVisible()
+    await expect(comments.getByText('a.txt:2 (avant) — Vérifier la suppression.', { exact: false })).toBeVisible()
+    await expect(comments.getByText('a.txt:4 (après) — Ajouter un exemple.', { exact: false })).toBeVisible()
     await comments.getByRole('button', { name: "Envoyer à l’agent" }).click()
-    const expected = '\x1b[200~Commentaires de revue :\na.txt:1 — Vérifier ce mot.\na.txt:2 — Ajouter un exemple.\n' +
-      longComments.map((body) => `a.txt:2 — ${body}`).join('\n') + '\x1b[201~\r'
+    const expected = '\x1b[200~Commentaires de revue :\na.txt:2 (avant) — Vérifier la suppression.\na.txt:4 (après) — Ajouter un exemple.\n' +
+      longComments.map((body) => `a.txt:4 (après) — ${body}`).join('\n') + '\x1b[201~\r'
     expect(Buffer.byteLength(expected)).toBeGreaterThan(64 * 1024)
     await expect.poll(() => existsSync(capture)).toBe(true)
     const received = readFileSync(capture, 'utf8')
@@ -116,7 +128,7 @@ test('le brouillon et sa ligne restent propres à chaque fichier pendant la revu
     await expect(draft).toHaveValue('Brouillon A')
     await expect(line).toHaveValue('2')
     await comments.getByRole('button', { name: 'Ajouter le commentaire' }).click()
-    await expect(comments.getByText(/a\.txt:2 — Brouillon A/)).toBeVisible()
+    await expect(comments.getByText(/a\.txt:2 \(après\) — Brouillon A/)).toBeVisible()
     await expect(draft).toHaveValue('')
 
     await select('b.txt')

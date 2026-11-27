@@ -47,6 +47,8 @@ export const TASK_BODY_MAX_LENGTH = 20_000
 const taskDraft = { title: z.string().trim().min(1, 'titre vide').max(256), body: z.string().max(TASK_BODY_MAX_LENGTH) }
 const taskId = z.number().int().positive()
 
+const reviewCommentSide = z.enum(['before', 'after'])
+
 export const ipcRequestSchemas = {
   'app:info': z.object({}).strict(),
   'projects:list': z.object({}).strict(),
@@ -123,7 +125,7 @@ export const ipcRequestSchemas = {
   'review:comments': z.object({ projectId: z.uuid(), worktreePath: absolutePath }).strict(),
   'review:addComment': z.object({
     projectId: z.uuid(), worktreePath: absolutePath,
-    path: z.string().min(1).max(4096), line: z.number().int().positive(),
+    path: z.string().min(1).max(4096), line: z.number().int().positive(), side: reviewCommentSide,
     body: z.string().trim().min(1).max(4000),
   }).strict(),
   'review:sendComments': z.object({
@@ -172,7 +174,10 @@ export type Task = {
   issueUrl: string | null
 }
 
-export type ReviewComment = { id: number; path: string; line: number; body: string; sentAt: number | null }
+export type ReviewCommentSide = z.infer<typeof reviewCommentSide>
+export type ReviewComment = {
+  id: number; path: string; line: number; side: ReviewCommentSide | null; body: string; sentAt: number | null
+}
 export type PullRequestCheck = { name: string; bucket: 'pass' | 'fail' | 'pending' | 'skipping' | 'cancel' }
 export type PullRequestContext =
   | { kind: 'unavailable'; message: string }
