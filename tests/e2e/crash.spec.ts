@@ -48,7 +48,33 @@ function currentRenderer<T>(app: ElectronApplication, source: string): Promise<T
   source)
 }
 
-test('après un crash renderer, une recharge conserve les terminaux et la session d’agent', async () => {
+function crashAndWaitForReload(app: ElectronApplication, timeoutMs: number): Promise<boolean> {
+  return app.evaluate(({ BrowserWindow }, timeoutMs) => {
+    const contents = BrowserWindow.getAllWindows()[0]!.webContents
+    return new Promise<boolean>((resolve, reject) => {
+      const crashTimeout = setTimeout(() => {
+        contents.removeListener('render-process-gone', crashed)
+        reject(new Error('Le crash du renderer n’a pas été observé.'))
+      }, 8_000)
+      function crashed() {
+        clearTimeout(crashTimeout)
+        const loaded = () => {
+          clearTimeout(reloadTimeout)
+          resolve(true)
+        }
+        const reloadTimeout = setTimeout(() => {
+          contents.removeListener('did-finish-load', loaded)
+          resolve(false)
+        }, timeoutMs)
+        contents.once('did-finish-load', loaded)
+      }
+      contents.once('render-process-gone', crashed)
+      contents.forcefullyCrashRenderer()
+    })
+  }, timeoutMs)
+}
+
+test('après un crash renderer, l’application restaure les terminaux et la session d’agent', async () => {
   const profile = isolatedProfile()
   const app = await profile.launch()
   try {
@@ -58,16 +84,9 @@ test('après un crash renderer, une recharge conserve les terminaux et la sessio
     const attach = `window.wu.invoke('terminal:attach', { id: ${JSON.stringify(terminalId)} }).then((reply) => reply.data)`
     await expect.poll(() => currentRenderer<string>(app, attach)).toContain('prêt-7')
 
-    await app.evaluate(({ BrowserWindow }) => {
-      const contents = BrowserWindow.getAllWindows()[0]!.webContents
-      return new Promise<void>((resolve) => {
-        contents.once('render-process-gone', () => {
-          contents.once('did-finish-load', resolve)
-          contents.reload()
-        })
-        contents.forcefullyCrashRenderer()
-      })
-    })
+    await expect(crashAndWaitForReload(app, 8_000)).resolves.toBe(true)
+    await expect.poll(() => currentRenderer(app,
+      "document.querySelector('[role=treeitem][aria-selected=true]')?.textContent?.includes('main')")).toBe(true)
 
     expect(await currentRenderer(app, "window.wu.invoke('agents:list', {})")).toEqual([
       expect.objectContaining({ id: agent.id, terminalId: agent.terminalId, state: 'waiting' }),
@@ -84,6 +103,20 @@ test('après un crash renderer, une recharge conserve les terminaux et la sessio
     await expect.poll(() => currentRenderer(app, "window.wu.invoke('agents:list', {})")).toEqual([
       expect.objectContaining({ id: agent.id, state: 'done' }),
     ])
+  } finally {
+    await app.close()
+  }
+})
+
+test('un second crash immédiat ne relance pas le renderer en boucle', async () => {
+  const app = await isolatedProfile().launch()
+  try {
+    const page = await app.firstWindow()
+    await expect(page.getByRole('heading', { name: 'Workflow Ultimate' })).toBeVisible()
+    await expect(crashAndWaitForReload(app, 8_000)).resolves.toBe(true)
+    await expect.poll(() => currentRenderer(app, 'document.querySelector("h1")?.textContent'))
+      .toBe('Workflow Ultimate')
+    await expect(crashAndWaitForReload(app, 1_000)).resolves.toBe(false)
   } finally {
     await app.close()
   }
