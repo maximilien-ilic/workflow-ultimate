@@ -18,10 +18,12 @@ export function CommandPalette({
   enabled,
   keybindings,
   onKeybindingChange,
+  discover,
 }: {
   enabled: boolean
   keybindings: Keybindings
   onKeybindingChange: (id: string, keybinding: string) => void
+  discover?: () => Promise<readonly Command[]>
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const search = useRef<HTMLInputElement>(null)
@@ -31,11 +33,13 @@ export function CommandPalette({
   const listId = useId()
   const commands = useSyncExternalStore(commandRegistry.subscribe, commandRegistry.getCommands)
   const [query, setQuery] = useState('')
+  const [discovered, setDiscovered] = useState<readonly Command[]>([])
+  const discovery = useRef(0)
   const [active, setActive] = useState(0)
   const [editing, setEditing] = useState<Command | null>(null)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState('')
-  const matches = findCommands(commands, query)
+  const matches = findCommands(query.trim() ? [...commands, ...discovered] : commands, query)
   const selected = matches[Math.min(active, matches.length - 1)]
   const selectedId = selected && `${listId}-${selected.id}`
 
@@ -48,7 +52,12 @@ export function CommandPalette({
     setError('')
     dialog.current.showModal()
     search.current?.focus()
-  }, [])
+    setDiscovered([])
+    const request = ++discovery.current
+    void discover?.().then((entries) => {
+      if (discovery.current === request && dialog.current?.open) setDiscovered(entries)
+    }).catch(console.error)
+  }, [discover])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -150,7 +159,7 @@ export function CommandPalette({
         <div className="palette-actions">
           <button
             type="button"
-            disabled={!selected}
+            disabled={!selected || !commands.includes(selected)}
             onClick={() => {
               if (!selected) return
               setEditing(selected)

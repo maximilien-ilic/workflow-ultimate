@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { AppInfo } from '../shared/ipc'
 import { ProjectSidebar } from './modules/projects/ProjectSidebar'
 import { OrcaImportDialog } from './modules/projects/OrcaImportDialog'
@@ -21,8 +21,31 @@ export function App() {
   const { refresh } = workspace
   useEffect(() => window.wu.onTaskAgentStarted(() => void refresh()), [refresh])
   const selection = workspace.selected
+  const { groups, select } = workspace
+  const [taskFocus, setTaskFocus] = useState<{ projectId: string; id: number } | null>(null)
+  const discoverTasks = useCallback(async () => {
+    const projects = await window.wu.invoke('projects:list', {})
+    const results = await Promise.all(projects.map(async (project) => {
+      const tasks = await window.wu.invoke('tasks:list', { projectId: project.id }).catch(() => [])
+      return tasks.map(({ title, id }) => ({
+        id: `task-${id}`,
+        title: `${title} · ${project.name}`,
+        run() {
+          const group = groups.find(({ project: candidate }) => candidate.id === project.id)
+          const worktree = selection?.project.id === project.id
+            ? selection.worktree
+            : group?.worktrees.find(({ main }) => main) ?? group?.worktrees[0]
+          if (worktree) select(worktree.path)
+          setTaskFocus({ projectId: project.id, id })
+        },
+      }))
+    }))
+    return results.flat()
+  }, [groups, select, selection])
+  const boardProject = taskFocus?.projectId ?? selection?.project.id
   return (
     <ShellLayout
+      discoverCommands={discoverTasks}
       leftPanel={<ProjectSidebar workspace={workspace} />}
       rightPanel={selection && (
         <PullRequestPanel
@@ -42,7 +65,7 @@ export function App() {
         )}
         <TerminalArea />
         <AgentOverview />
-        <TaskBoard key={selection?.project.id} projectId={selection?.project.id} />
+        <TaskBoard key={boardProject} projectId={boardProject} focusRequest={taskFocus} onClose={() => setTaskFocus(null)} />
         <ReviewView projectId={selection?.project.id} worktreePath={selection?.worktree.path} />
         <OrcaImportDialog select={workspace.select} refresh={workspace.refresh} />
       </main>

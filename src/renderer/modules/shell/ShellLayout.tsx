@@ -3,7 +3,7 @@ import { panelCommandBindings } from '../../../shared/keybindings'
 import { maxPanelWidth, minPanelWidth } from '../../../shared/layout-defaults'
 import type { Settings } from '../../../shared/settings'
 import { CommandPalette } from '../palette/CommandPalette'
-import { registerCommand } from '../palette/commands'
+import { registerCommand, type Command } from '../palette/commands'
 import { Diagnostics } from './Diagnostics'
 import { useSettings } from './use-settings'
 import './layout.css'
@@ -110,10 +110,12 @@ export function ShellLayout({
   children,
   leftPanel,
   rightPanel,
+  discoverCommands,
 }: {
   children: ReactNode
   leftPanel?: ReactNode
   rightPanel?: ReactNode
+  discoverCommands?: () => Promise<readonly Command[]>
 }) {
   const { settings, ready, error, update } = useSettings()
   const toggle = useCallback(
@@ -181,6 +183,7 @@ export function ShellLayout({
         ))}
         <CommandPalette
           enabled={ready}
+          discover={discoverCommands}
           keybindings={settings.keybindings}
           onKeybindingChange={(id, keybinding) =>
             update((previous) => ({
