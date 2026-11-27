@@ -14,6 +14,15 @@ export function worktreeLabel(worktree: WorktreeSummary): string {
 }
 
 const recentKey = 'wu.workspace-recents'
+const worktreePrefix = 'worktree:'
+const projectPrefix = 'project:'
+
+function recentWorktree(groups: ProjectGroup[], key = ''): string | undefined {
+  if (key.startsWith(worktreePrefix)) return key.slice(worktreePrefix.length)
+  if (!key.startsWith(projectPrefix)) return undefined
+  const group = groups.find(({ project }) => project.id === key.slice(projectPrefix.length))
+  return (group?.worktrees.find(({ main }) => main) ?? group?.worktrees[0])?.path
+}
 
 function readRecent(): string[] {
   try {
@@ -110,7 +119,8 @@ export function useWorkspace() {
   const targets = groups.flatMap(({ project, worktrees }) =>
     worktrees.map((worktree) => ({ project, worktree })),
   )
-  const selected = targets.find(({ worktree }) => worktree.path === path) ?? targets[0]
+  const activePath = path ?? recentWorktree(groups, recent[0])
+  const selected = targets.find(({ worktree }) => worktree.path === activePath) ?? targets[0]
   return { groups, selected, select, refresh, error, recent, collapsed, expand }
 }
 

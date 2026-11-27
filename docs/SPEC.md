@@ -59,6 +59,7 @@ Modules prévus **après la v1** (ne pas coder avant) : `browser` (navigateur in
 
 ### agents
 - Lancer Claude Code ou Codex dans un worktree en 1 action (palette ou bouton), avec un prompt initial facultatif.
+- Meta+Shift+N ouvre le lancement rapide dans le projet actif. Entrée envoie le prompt à Claude Code ou Codex dans le worktree actif ou dans une nouvelle branche. Échap ferme la fenêtre. Si Plasma demande une confirmation, accepter l’attribution du raccourci. Repli : `workflow-ultimate --action agents.quick-launch`.
 - État de chaque agent : `démarrage`, `travaille`, `attend une réponse`, `terminé`, `erreur`. Il vient des hooks des CLI (Claude Code : `Notification`/`Stop` ; Codex : `notify`), qui écrivent sur un socket local de l'appli. Lire la sortie du terminal sert seulement de repli.
 - Reprendre une session existante (`claude --resume`, `codex resume`).
 - Vue d'ensemble : tous les agents de tous les projets sur un seul écran, triés par « attend une réponse » d'abord.

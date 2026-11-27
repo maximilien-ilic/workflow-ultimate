@@ -18,7 +18,7 @@ import { registerTerminalHandlers } from './modules/terminals/ipc'
 import { registerTerminalHistory } from './modules/terminals/history'
 import { startPtyHost } from './modules/terminals/pty-host'
 import { registerSettings } from './modules/shell/settings'
-import { registerSingleInstance } from './modules/shell/single-instance'
+import { parseAction, quickLaunchActionId, registerSingleInstance, runMainAction } from './modules/shell/single-instance'
 import { createMainWindow } from './modules/shell/window'
 
 if (!registerSingleInstance()) app.exit(0)
@@ -91,6 +91,7 @@ void app.whenReady().then(async () => {
   const window = createMainWindow()
   const onAgentStateChange = registerAgentDesktop(window)
   flushTerminalHistory(window)
+  if (parseAction(process.argv) === quickLaunchActionId) runMainAction(quickLaunchActionId)
 })
 void app.whenReady().then(registerGlobalShortcuts)
 app.on('window-all-closed', () => app.quit())
