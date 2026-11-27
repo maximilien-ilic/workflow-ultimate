@@ -17,6 +17,8 @@ vi.mock('../shell/ipc', async (importOriginal) => {
       handlers.set(channel, actual.validated(channel, fn, () => true)),
   }
 })
+vi.mock('./github-sync', () => ({ syncIssues: vi.fn() }))
+const { syncIssues } = await import('./github-sync')
 const { migrate } = await import('../shell/db')
 const { migrations } = await import('../shell/migrations')
 const { registerTaskHandlers } = await import('./ipc')
@@ -27,6 +29,7 @@ let tasks: ReturnType<typeof registerTaskHandlers>
 const invoke = (channel: IpcChannel, raw: unknown) => handlers.get(channel)!({} as IpcMainInvokeEvent, raw)
 
 beforeEach(() => {
+  vi.mocked(syncIssues).mockReset()
   db = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true })
   migrate(db, migrations)
   db.prepare('INSERT INTO projects (id, path, git_dir, name, added_at) VALUES (?, ?, ?, ?, ?)').run(
@@ -58,4 +61,27 @@ it.each([
 
 it('rejette un projet inconnu', async () => {
   await expect(invoke('tasks:list', { projectId: randomUUID() })).rejects.toThrow(/inconnu/)
+})
+
+
+it('partage un import en cours et accepte une nouvelle tentative après son échec', async () => {
+  let fail!: (error: Error) => void
+  vi.mocked(syncIssues).mockReturnValueOnce(new Promise<void>((_, reject) => { fail = reject }))
+  const first = invoke('tasks:importIssues', { projectId })
+  const second = invoke('tasks:importIssues', { projectId })
+  const failed = Promise.allSettled([first, second])
+  await Promise.resolve()
+  try {
+    expect(syncIssues).toHaveBeenCalledExactlyOnceWith(db, projectId)
+  } finally {
+    fail(new Error('GitHub indisponible'))
+    await failed
+  }
+  expect(await failed).toEqual([
+    { status: 'rejected', reason: new Error('GitHub indisponible') },
+    { status: 'rejected', reason: new Error('GitHub indisponible') },
+  ])
+  vi.mocked(syncIssues).mockResolvedValueOnce(undefined)
+  await expect(invoke('tasks:importIssues', { projectId })).resolves.toEqual([])
+  expect(syncIssues).toHaveBeenCalledTimes(2)
 })
