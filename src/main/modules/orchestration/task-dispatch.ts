@@ -10,7 +10,7 @@ import {
 import type { AgentSessions } from '../agents/sessions'
 import { projectWorkspaces } from '../projects/ipc'
 import { checkedProjectPath, repoInfo } from '../projects/registry'
-import { branchForIssue, createWorktree, issueBranch, listWorktrees } from '../projects/worktrees'
+import { branchForLocalTask, createWorktree, issueBranch, listWorktrees } from '../projects/worktrees'
 import { taskColumns } from './tasks'
 
 type DispatchRequest = IpcRequest<'tasks:dispatch'>
@@ -45,7 +45,7 @@ function buildPrompt(task: Task): string {
 
 async function taskBranch(repo: string, task: DispatchTask): Promise<string> {
   if (task.branch) return task.branch
-  if (!task.issueNumber) return branchForIssue(task.id, task.title)
+  if (!task.issueNumber) return branchForLocalTask(task.id, task.title)
   const issue = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)$/.exec(task.issueUrl ?? '')
   if (!issue || Number(issue[2]) !== task.issueNumber) throw new Error('Lien de l’issue GitHub invalide.')
   return issueBranch(repo, task.issueNumber, issue[1])

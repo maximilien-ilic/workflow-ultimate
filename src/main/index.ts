@@ -78,8 +78,8 @@ void app.whenReady().then(async () => {
       codex: process.env['WU_CODEX_BIN'] || 'codex',
     },
   })
-  registerReviewHandlers(db, agents)
   const tasks = registerTaskHandlers(db, agents)
+  registerReviewHandlers(db, agents, tasks.ownsLocalBranch)
   const socket = socketPath
     ? await startAgentSocket({
         path: socketPath,

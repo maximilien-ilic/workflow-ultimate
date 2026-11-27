@@ -58,6 +58,7 @@ export function registerTaskHandlers(db: DatabaseSync, agents: Pick<AgentSession
     return tasks.list(projectId)
   })
   return {
+    ownsLocalBranch: tasks.ownsLocalBranch,
     refresh,
     close() {
       clearInterval(timer)

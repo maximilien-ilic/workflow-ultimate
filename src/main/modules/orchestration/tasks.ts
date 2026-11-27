@@ -26,6 +26,11 @@ export function createTasks(db: DatabaseSync) {
       status = CASE WHEN excluded.status = 'done' THEN 'done' ELSE tasks.status END
   `)
   return {
+    ownsLocalBranch(projectId: string, branch: string): boolean {
+      return Boolean(db.prepare(
+        'SELECT 1 FROM tasks WHERE project_id = ? AND issue_number IS NULL AND agent_branch = ?',
+      ).get(projectId, branch))
+    },
     list: (projectId: string) => select.all(projectId) as Task[],
     create: (projectId: string, { title, body }: TaskDraft) => insert.get(projectId, title, body) as Task,
     update(projectId: string, id: number, { title, body }: TaskDraft) {

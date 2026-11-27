@@ -69,3 +69,20 @@ it('migre les tâches existantes et efface seulement le lien quand la session es
   previous.exec("DELETE FROM agent_sessions WHERE id = 'a'")
   expect(linked.get(task.id)).toEqual({ agent_session_id: null, agent_branch: 'feat/1-tache' })
 })
+
+
+it('reconnaît une ancienne branche de tâche locale sans masquer celle d’une issue importée', () => {
+  const tasks = createTasks(db)
+  const associate = db.prepare('UPDATE tasks SET agent_branch = ? WHERE project_id = ?')
+  tasks.create(PROJECT, { title: 'Tâche locale', body: '' })
+  tasks.saveIssue(OTHER_PROJECT, {
+    title: 'Issue importée', body: '', status: 'todo', issueNumber: 42, issueUrl: 'https://github.com/a/b/issues/42',
+  })
+  const branch = 'feat/42-contexte'
+  associate.run(branch, PROJECT)
+  associate.run(branch, OTHER_PROJECT)
+
+  expect(tasks.ownsLocalBranch(PROJECT, branch)).toBe(true)
+  expect(tasks.ownsLocalBranch(OTHER_PROJECT, branch)).toBe(false)
+  expect(tasks.ownsLocalBranch(PROJECT, 'feat/7-autre')).toBe(false)
+})

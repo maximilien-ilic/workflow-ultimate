@@ -16,7 +16,9 @@ async function checkedWorktree(db: DatabaseSync, projectId: string, worktreePath
   return worktreePath
 }
 
-export function registerReviewHandlers(db: DatabaseSync, agents: AgentSessions): void {
+export function registerReviewHandlers(
+  db: DatabaseSync, agents: AgentSessions, ownsLocalBranch: (projectId: string, branch: string) => boolean,
+): void {
   const comments = createReviewComments(db)
   handle('review:comments', async (target) => {
     await checkedWorktree(db, target.projectId, target.worktreePath)
@@ -47,7 +49,7 @@ export function registerReviewHandlers(db: DatabaseSync, agents: AgentSessions):
     output: await pushBranch(await checkedWorktree(db, projectId, worktreePath)),
   }))
   handle('review:pr', async ({ projectId, worktreePath }) =>
-    readPullRequest(await checkedWorktree(db, projectId, worktreePath)),
+    readPullRequest(await checkedWorktree(db, projectId, worktreePath), (branch) => !ownsLocalBranch(projectId, branch)),
   )
   handle('review:createPr', async ({ projectId, worktreePath, branch, title, body }) =>
     createPullRequest(await checkedWorktree(db, projectId, worktreePath), branch, title, body),
