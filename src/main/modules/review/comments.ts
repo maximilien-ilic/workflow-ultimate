@@ -4,7 +4,6 @@ import type { ReviewComment } from '../../../shared/ipc'
 type Worktree = { projectId: string; worktreePath: string }
 type Draft = Pick<ReviewComment, 'path' | 'line' | 'body'>
 
-const MAX_WRITE_BYTES = 64 * 1024
 const singleLine = (value: string) => value.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, ' ')
 
 function agentMessage(comments: ReviewComment[]): string {
@@ -34,13 +33,12 @@ export function createReviewComments(db: DatabaseSync) {
       const pending = list(target).filter(({ sentAt }) => sentAt === null)
       if (!pending.length) return 0
       const message = agentMessage(pending)
-      if (Buffer.byteLength(message) > MAX_WRITE_BYTES) throw new Error('Le lot de commentaires dépasse 64 Kio.')
       sending.add(key)
       try {
         await write(message)
         const ids = pending.map(({ id }) => id)
-        db.prepare(`UPDATE review_comments SET sent_at = ? WHERE id IN (${ids.map(() => '?').join(',')})`)
-          .run(Date.now(), ...ids)
+        db.prepare('UPDATE review_comments SET sent_at = ? WHERE id IN (SELECT value FROM json_each(?))')
+          .run(Date.now(), JSON.stringify(ids))
         return ids.length
       } finally {
         sending.delete(key)

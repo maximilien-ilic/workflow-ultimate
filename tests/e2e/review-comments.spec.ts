@@ -46,17 +46,29 @@ test('les commentaires persistent et arrivent dans le PTY en un seul message', a
       .click({ position: { x: 10, y: 7 } })
     await expect(comments.getByLabel('Ligne', { exact: true })).toHaveValue('2')
     await add('2', 'Ajouter un exemple.')
+    const longComments = Array.from({ length: 6 }, (_, index) =>
+      `${index + 1}. ${'界'.repeat(3_996)}`,
+    )
+    const [project] = await page.evaluate(() => window.wu.invoke('projects:list', {}))
+    await page.evaluate(async ({ projectId, worktreePath, bodies }) => {
+      for (const body of bodies)
+        await window.wu.invoke('review:addComment', { projectId, worktreePath, path: 'a.txt', line: 2, body })
+    }, { projectId: project!.id, worktreePath: repo, bodies: longComments })
     await page.reload()
     await openReview()
     await expect(comments.getByText('Vérifier ce mot.', { exact: false })).toBeVisible()
     await comments.getByRole('button', { name: "Envoyer à l’agent" }).click()
-    await expect.poll(() => existsSync(capture) ? readFileSync(capture, 'utf8') : '').toBe(
-      '\x1b[200~Commentaires de revue :\na.txt:1 — Vérifier ce mot.\na.txt:2 — Ajouter un exemple.\x1b[201~\r',
-    )
-    await expect(comments.getByText('Envoyé', { exact: true })).toHaveCount(2)
+    const expected = '\x1b[200~Commentaires de revue :\na.txt:1 — Vérifier ce mot.\na.txt:2 — Ajouter un exemple.\n' +
+      longComments.map((body) => `a.txt:2 — ${body}`).join('\n') + '\x1b[201~\r'
+    expect(Buffer.byteLength(expected)).toBeGreaterThan(64 * 1024)
+    await expect.poll(() => existsSync(capture)).toBe(true)
+    const received = readFileSync(capture, 'utf8')
+    expect(Buffer.byteLength(received)).toBe(Buffer.byteLength(expected))
+    expect(received === expected).toBe(true)
+    await expect(comments.getByText('Envoyé', { exact: true })).toHaveCount(2 + longComments.length)
     await page.reload()
     await openReview()
-    await expect(comments.getByText('Envoyé', { exact: true })).toHaveCount(2)
+    await expect(comments.getByText('Envoyé', { exact: true })).toHaveCount(2 + longComments.length)
   } finally {
     await app.close()
     rmSync(dir, { recursive: true, force: true })
