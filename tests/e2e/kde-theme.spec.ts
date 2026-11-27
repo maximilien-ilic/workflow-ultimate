@@ -39,6 +39,12 @@ ForegroundNormal=235,238,245
     await expect(root).toHaveCSS('accent-color', 'rgb(228, 152, 64)')
     await follow.uncheck()
     await expect(root).not.toHaveCSS('accent-color', 'rgb(228, 152, 64)')
+    await page.keyboard.press('Control+Shift+P')
+    const palette = page.getByRole('dialog', { name: 'Palette de commandes' })
+    const search = palette.getByRole('combobox')
+    await search.fill('Suivre le thème KDE')
+    await search.press('Enter')
+    await expect(follow).toBeChecked()
   } finally {
     await app.close()
   }

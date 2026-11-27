@@ -34,8 +34,12 @@ export function KdeTheme({ controls = false }: { controls?: boolean }) {
 
   useEffect(() => {
     if (!controls) return
-    return registerCommand({ id: 'shell.follow-kde-theme', title: 'Basculer le suivi du thème KDE', run: toggle })
-  }, [controls, toggle])
+    return registerCommand({
+      id: 'shell.follow-kde-theme',
+      title: enabled ? 'Utiliser le thème de l’application' : 'Suivre le thème KDE',
+      run: toggle,
+    })
+  }, [controls, enabled, toggle])
 
   useEffect(() => {
     if (!enabled) return
