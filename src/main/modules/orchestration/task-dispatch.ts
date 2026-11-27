@@ -11,7 +11,7 @@ import {
 import type { AgentSessions } from '../agents/sessions'
 import { projectWorkspaces } from '../projects/ipc'
 import { checkedProjectPath, repoInfo } from '../projects/registry'
-import { branchForLocalTask, createWorktree, issueBranch, listWorktrees } from '../projects/worktrees'
+import { branchExists, branchForLocalTask, createWorktree, defaultBranchRef, issueBranch, listWorktrees } from '../projects/worktrees'
 import { taskColumns } from './tasks'
 
 type DispatchRequest = IpcRequest<'tasks:dispatch'>
@@ -58,7 +58,12 @@ async function taskBranch(repo: string, task: DispatchTask): Promise<string> {
 
 async function worktreeForBranch(repo: string, branch: string): Promise<string> {
   const existing = (await listWorktrees(repo)).find((worktree) => worktree.branch === branch)
-  if (!existing) return createWorktree(repo, projectWorkspaces(), { branch })
+  if (!existing) {
+    const workspaces = projectWorkspaces()
+    if (await branchExists(repo, branch)) return createWorktree(repo, workspaces, { branch, create: false })
+    const base = await defaultBranchRef(repo)
+    return createWorktree(repo, workspaces, { branch, base, create: true })
+  }
   const [project, target] = await Promise.all([repoInfo(repo), repoInfo(existing.path)])
   if (existing.main || target.gitDir !== project.gitDir)
     throw new Error('Ce worktree ne peut pas recevoir la tâche.')
