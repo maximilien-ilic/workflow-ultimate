@@ -18,6 +18,7 @@ import { registerTerminalHandlers } from './modules/terminals/ipc'
 import { registerTerminalHistory } from './modules/terminals/history'
 import { startPtyHost } from './modules/terminals/pty-host'
 import { registerSettings } from './modules/shell/settings'
+import { registerKdePalette } from './modules/shell/kde-palette'
 import { parseAction, quickLaunchActionId, registerSingleInstance, runMainAction } from './modules/shell/single-instance'
 import { createMainWindow } from './modules/shell/window'
 
@@ -37,6 +38,7 @@ handle('app:info', () => ({
 registerExternalLinks(['https://github.com'])
 
 registerSettings()
+registerKdePalette()
 void app.whenReady().then(async () => {
   let db
   try {
