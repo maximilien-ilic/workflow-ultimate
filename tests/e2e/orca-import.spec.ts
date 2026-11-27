@@ -12,6 +12,8 @@ test('propose la sélection Orca au premier lancement et réutilise le dossier d
   const other = testInfo.outputPath('beta')
   const linked = testInfo.outputPath('lié')
   const workspaceDir = testInfo.outputPath('workspaces')
+  const replacement = testInfo.outputPath('autres-workspaces')
+  const removed = testInfo.outputPath('à-retirer')
   for (const path of [repo, other, join(config, 'orca/profiles/default')])
     mkdirSync(path, { recursive: true })
   const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd })
@@ -31,6 +33,7 @@ test('propose la sélection Orca au premier lancement et réutilise le dossier d
     )
   }
   git(repo, 'worktree', 'add', '-q', '-b', 'feature', linked)
+  git(other, 'worktree', 'add', '-q', '-b', 'supprimée', removed)
   const fixture = new DatabaseSync(source)
   fixture.exec('CREATE TABLE profile_state_documents (domain TEXT PRIMARY KEY, payload TEXT)')
   const insert = fixture.prepare('INSERT INTO profile_state_documents VALUES (?, ?)')
@@ -45,12 +48,12 @@ test('propose la sélection Orca au premier lancement et réutilise le dossier d
     'worktreeMeta',
     JSON.stringify({
       ['alpha::' + linked]: { displayName: 'Lié existant' },
+      ['beta::' + removed]: { displayName: 'À retirer avant confirmation' },
       ['alpha::' + testInfo.outputPath('absent')]: { displayName: 'Volet périmé' },
     }),
   )
   insert.run('settings', JSON.stringify({ workspaceDir }))
   fixture.close()
-  const before = readFileSync(source)
   const launch = () =>
     _electron.launch({
       args: ['out/main/index.js', `--user-data-dir=${testInfo.outputPath('profile')}`],
@@ -64,6 +67,14 @@ test('propose la sélection Orca au premier lancement et réutilise le dossier d
     await expect(dialog).toBeVisible()
     await expect(dialog.getByRole('checkbox', { name: 'Lié existant' })).toBeChecked()
     await expect(dialog.getByText('Volet périmé')).toHaveCount(0)
+    await expect(dialog.getByRole('checkbox', { name: 'À retirer avant confirmation' })).toBeChecked()
+    await expect(dialog.getByText(workspaceDir, { exact: false })).toBeVisible()
+    const changed = new DatabaseSync(source)
+    changed.prepare("UPDATE profile_state_documents SET payload = ? WHERE domain = 'settings'")
+      .run(JSON.stringify({ workspaceDir: replacement }))
+    changed.close()
+    const before = readFileSync(source)
+    git(other, 'worktree', 'remove', removed)
     await dialog.getByRole('checkbox', { name: 'beta', exact: true }).uncheck()
     await dialog.getByRole('button', { name: 'Importer', exact: true }).click()
     await expect(dialog).toBeHidden()
@@ -84,9 +95,15 @@ test('propose la sélection Orca au premier lancement et réutilise le dossier d
     await search.fill('orca')
     await search.press('Enter')
     await expect(dialog).toBeVisible()
+    await expect(dialog.getByText(replacement, { exact: false })).toBeVisible()
     await dialog.getByRole('button', { name: 'Importer', exact: true }).click()
     await expect(tree.getByRole('treeitem', { name: 'alpha', exact: true })).toHaveCount(1)
     await expect(tree.getByRole('treeitem', { name: 'beta', exact: true })).toHaveCount(1)
+    const createdAfterReimport = await page.evaluate(
+      (projectId) => window.wu.invoke('worktrees:create', { projectId, branch: 'autre', create: true }),
+      project!.id,
+    )
+    expect(createdAfterReimport).toBe(join(replacement, 'alpha/autre'))
     expect(readFileSync(source)).toEqual(before)
   } finally {
     await app.close()

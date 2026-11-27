@@ -1,3 +1,4 @@
+import type { WebContents } from 'electron'
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -38,14 +39,35 @@ async function preview(): Promise<OrcaImport | null> {
 }
 
 export function registerOrcaImport(db: DatabaseSync): void {
-  handle('projects:orcaPreview', ({ manual }) =>
-    !manual && readAppSettings().orcaImport?.seen ? null : preview(),
-  )
-  handle('projects:orcaDismiss', () => {
+  const visiblePreviews = new WeakMap<WebContents, Promise<OrcaImport | null>>()
+  const observed = new WeakSet<WebContents>()
+  handle('projects:orcaPreview', ({ manual }, { sender }) => {
+    if (!manual && readAppSettings().orcaImport?.seen) return null
+    const visible = visiblePreviews.get(sender)
+    if (visible) return visible
+    if (!observed.has(sender)) {
+      observed.add(sender)
+      sender.on('did-start-navigation', () => visiblePreviews.delete(sender))
+    }
+
+    // Plusieurs demandes peuvent arriver avant l'ouverture de la boîte. Elles affichent le même aperçu.
+    const pending = preview()
+    const clear = () => {
+      if (visiblePreviews.get(sender) === pending) visiblePreviews.delete(sender)
+    }
+    void pending.then((source) => { if (!source) clear() }, clear)
+    visiblePreviews.set(sender, pending)
+    return pending
+  })
+  handle('projects:orcaDismiss', (_request, { sender }) => {
+    visiblePreviews.delete(sender)
     saveOrcaImport()
     return null
   })
-  handle('projects:orcaImport', async ({ repos, worktrees, useWorkspace }) => {
+  handle('projects:orcaImport', async ({ repos, worktrees, useWorkspace }, { sender }) => {
+    const visible = visiblePreviews.get(sender)
+    const shown = useWorkspace ? (await visible)?.workspaceDir : undefined
+    if (useWorkspace && !shown) throw new Error('Rouvrez l’aperçu Orca pour confirmer le dossier.')
     const source = await preview()
     if (!source) throw new Error('Aucun profil Orca détecté')
     const selectedWorktrees = new Set(worktrees)
@@ -62,7 +84,8 @@ export function registerOrcaImport(db: DatabaseSync): void {
         result.rejected.push({ path: repo.path, reason: (error as Error).message })
       }
     }
-    saveOrcaImport(useWorkspace ? (source.workspaceDir ?? undefined) : undefined)
+    saveOrcaImport(shown ?? undefined)
+    if (result.rejected.length === 0 && visiblePreviews.get(sender) === visible) visiblePreviews.delete(sender)
     return { ...result, activeWorktree: chosen.find(({ repoPath }) => imported.has(repoPath))?.path ?? null }
   })
 }
