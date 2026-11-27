@@ -5,12 +5,17 @@ import { handle } from '../shell/ipc'
 import { syncIssues } from './github-sync'
 import { registerTaskQueue } from './queue-ipc'
 import { createTaskDispatch, readDispatchTask } from './task-dispatch'
+import { createTaskTransitions, TASK_PR_POLL_INTERVAL_MS } from './task-transitions'
 import { createTasks } from './tasks'
 
-export function registerTaskHandlers(db: DatabaseSync, agents: Pick<AgentSessions, 'start' | 'activeCount' | 'onSlotAvailable'>): void {
+export function registerTaskHandlers(db: DatabaseSync, agents: Pick<AgentSessions, 'start' | 'activeCount' | 'onSlotAvailable'>) {
   const tasks = createTasks(db)
   const dispatch = createTaskDispatch(db, agents)
   const queue = registerTaskQueue(agents)
+  const transitions = createTaskTransitions(db, queue.notify)
+  const refresh = () => void transitions.refresh()
+  const timer = setInterval(refresh, TASK_PR_POLL_INTERVAL_MS).unref()
+  refresh()
   // Chaque canal vérifie le projet puis renvoie tout son tableau : le renderer n'a qu'un état à remplacer.
   const listOf = (projectId: string) => {
     getProject(db, projectId)
@@ -29,7 +34,11 @@ export function registerTaskHandlers(db: DatabaseSync, agents: Pick<AgentSession
   handle('tasks:dispatch', (request, { sender }) => {
     const { id, projectId, agent } = request
     const { title } = readDispatchTask(db, request)
-    queue.enqueue({ id, projectId, title, agent }, (hasSlot) => dispatch(request, sender, hasSlot))
+    queue.enqueue({ id, projectId, title, agent }, async (hasSlot) => {
+      const started = await dispatch(request, sender, hasSlot)
+      if (started) refresh()
+      return started
+    })
     void queue.drain()
     return listOf(projectId)
   })
@@ -42,4 +51,11 @@ export function registerTaskHandlers(db: DatabaseSync, agents: Pick<AgentSession
     await syncIssues(db, projectId)
     return tasks.list(projectId)
   })
+  return {
+    refresh,
+    close() {
+      clearInterval(timer)
+      transitions.close()
+    },
+  }
 }
