@@ -142,6 +142,13 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
     })
   }
 
+  function removeProject(project: Project) {
+    void run(async () => {
+      await window.wu.invoke('projects:remove', { id: project.id })
+      await refresh()
+    })
+  }
+
   function launch(agent: AgentSession['agent'], name: string) {
     if (!selected || !label) return
     const cwd = selected.worktree.path
@@ -213,11 +220,18 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
       </div>
       {!rows.length && <p>Aucun projet.</p>}
       {groups.map(
-        ({ project, error }) =>
-          error && (
-            <p key={project.id} role="alert">
-              {project.name} · {error}
-            </p>
+        ({ project, worktrees, error }) =>
+          worktrees.length === 0 && (
+            <div key={project.id}>
+              {error && (
+                <p role="alert">
+                  {project.name} · {error}
+                </p>
+              )}
+              <button type="button" disabled={busy} onClick={() => removeProject(project)}>
+                Retirer {project.name}
+              </button>
+            </div>
           ),
       )}
       {selected && label && (
@@ -265,12 +279,7 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
             type="button"
             disabled={busy}
             aria-label={`Retirer ${selected.project.name}`}
-            onClick={() =>
-              void run(async () => {
-                await window.wu.invoke('projects:remove', { id: selected.project.id })
-                await refresh()
-              })
-            }
+            onClick={() => removeProject(selected.project)}
           >
             Retirer le projet
           </button>
