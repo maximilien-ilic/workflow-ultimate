@@ -99,6 +99,50 @@ it('réimporte sans doublon : garde la colonne choisie, passe à Fini une issue 
   expect(tasks.list(PROJECT)[0]).toMatchObject({ id: open.id, title: 'Tableau livré', status: 'done' })
 })
 
+it('synchronise chaque champ en préservant les modifications locales', async () => {
+  setPage(1, { count: 2, issues: [issue(12, 'open', 'Titre', 'Texte'), issue(7, 'open', 'Autre', 'Description')] })
+  await syncIssues(db, PROJECT)
+  const tasks = createTasks(db)
+  const [first, second] = tasks.list(PROJECT)
+  tasks.update(PROJECT, first!.id, { title: 'Titre local', body: 'Texte' })
+  tasks.update(PROJECT, second!.id, { title: 'Autre', body: '' })
+  setPage(1, { count: 2, issues: [
+    issue(12, 'closed', 'Titre distant', 'Texte distant'),
+    issue(7, 'open', 'Autre titre distant', 'Autre texte distant'),
+  ] })
+  await syncIssues(db, PROJECT)
+  expect(tasks.list(PROJECT)).toEqual([
+    { ...first, title: 'Titre local', body: 'Texte distant', status: 'done' },
+    { ...second, title: 'Autre titre distant', body: '' },
+  ])
+
+  setPage(1, { count: 1, issues: [issue(12, 'closed', 'Nouveau titre', 'Nouveau texte')] })
+  await syncIssues(db, PROJECT)
+  expect(tasks.list(PROJECT)[0]).toMatchObject({ title: 'Titre local', body: 'Nouveau texte' })
+})
+
+it('garde les textes des tâches issues de GitHub créées avant la migration', async () => {
+  using previous = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true })
+  migrate(previous, migrations.slice(0, 8))
+  previous.prepare('INSERT INTO projects (id, path, git_dir, name, added_at) VALUES (?, ?, ?, ?, ?)').run(
+    PROJECT, repo, `${repo}/.git`, 'projet', 0,
+  )
+  const distant = issue(12, 'closed', 'Titre distant', 'Texte distant')
+  previous.prepare(`
+    INSERT INTO tasks (project_id, title, body, status, issue_number, issue_url) VALUES (?, ?, ?, 'todo', ?, ?)
+  `).run(PROJECT, 'Titre local hérité', 'Notes héritées', distant.number, distant.url)
+
+  migrate(previous, migrations)
+  setPage(1, { count: 1, issues: [distant] })
+  await syncIssues(previous, PROJECT)
+  setPage(1, { count: 1, issues: [issue(12, 'closed', 'Autre titre', 'Autre texte')] })
+  await syncIssues(previous, PROJECT)
+  expect(createTasks(previous).list(PROJECT)).toEqual([
+    { id: expect.any(Number), issueNumber: 12, issueUrl: distant.url, title: 'Titre local hérité',
+      body: 'Notes héritées', status: 'done' },
+  ])
+})
+
 it('refuse d’importer depuis une autre source GitHub que celle du premier import', async () => {
   await syncIssues(db, PROJECT)
   const before = createTasks(db).list(PROJECT)

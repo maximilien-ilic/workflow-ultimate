@@ -58,16 +58,18 @@ it('migre les tâches existantes et efface seulement le lien quand la session es
   using previous = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true })
   migrate(previous, migrations.slice(0, 7))
   previous.exec("INSERT INTO projects (id, path, git_dir, name, added_at) VALUES ('p', '/p', '/p/.git', 'p', 0)")
-  const task = createTasks(previous).create('p', { title: 'Ancienne tâche', body: 'À conserver' })
+  previous.exec("INSERT INTO tasks (id, project_id, title, body, status) VALUES (1, 'p', 'Ancienne tâche', 'À conserver', 'todo')")
   migrate(previous, migrations)
   const linked = previous.prepare('SELECT agent_session_id, agent_branch FROM tasks WHERE id = ?')
-  expect(linked.get(task.id)).toEqual({ agent_session_id: null, agent_branch: null })
-  expect(createTasks(previous).list('p')).toEqual([task])
+  expect(linked.get(1)).toEqual({ agent_session_id: null, agent_branch: null })
+  expect(createTasks(previous).list('p')).toEqual([
+    { id: 1, title: 'Ancienne tâche', body: 'À conserver', status: 'todo', issueNumber: null, issueUrl: null },
+  ])
 
   previous.exec("INSERT INTO agent_sessions (id, agent, cwd, state, created_at, updated_at) VALUES ('a', 'codex', '/p', 'done', 0, 0)")
-  previous.prepare('UPDATE tasks SET agent_session_id = ?, agent_branch = ? WHERE id = ?').run('a', 'feat/1-tache', task.id)
+  previous.prepare('UPDATE tasks SET agent_session_id = ?, agent_branch = ? WHERE id = ?').run('a', 'feat/1-tache', 1)
   previous.exec("DELETE FROM agent_sessions WHERE id = 'a'")
-  expect(linked.get(task.id)).toEqual({ agent_session_id: null, agent_branch: 'feat/1-tache' })
+  expect(linked.get(1)).toEqual({ agent_session_id: null, agent_branch: 'feat/1-tache' })
 })
 
 
