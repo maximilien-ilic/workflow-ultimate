@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import type { PullRequestCheck, PullRequestContext } from '../../../shared/ipc'
 import './pull-request.css'
 
@@ -11,17 +11,19 @@ const stateLabels = { OPEN: 'Ouverte', CLOSED: 'Fermée', MERGED: 'Fusionnée' }
 type Target = { projectId: string; worktreePath: string }
 type Draft = { title: string; body: string }
 
-export function PullRequestPanel({ projectId, worktreePath, branch }: Target & { branch: string | null }) {
-  const [drafts, setDrafts] = useState(() => new Map<string, Draft>())
-  return <BranchPullRequestPanel
-    key={branch} projectId={projectId} worktreePath={worktreePath} drafts={drafts} setDrafts={setDrafts}
-  />
+// Le panneau est démonté lors du masquage ou d’un changement de worktree.
+const drafts = new Map<string, Draft>()
+
+function readDraft(form: HTMLFormElement): Draft {
+  const data = new FormData(form)
+  return { title: String(data.get('title') ?? ''), body: String(data.get('body') ?? '') }
 }
 
-function BranchPullRequestPanel({ projectId, worktreePath, drafts, setDrafts }: Target & {
-  drafts: Map<string, Draft>
-  setDrafts: Dispatch<SetStateAction<Map<string, Draft>>>
-}) {
+export function PullRequestPanel({ projectId, worktreePath, branch }: Target & { branch: string | null }) {
+  return <BranchPullRequestPanel key={branch} projectId={projectId} worktreePath={worktreePath} />
+}
+
+function BranchPullRequestPanel({ projectId, worktreePath }: Target) {
   const [context, setContext] = useState<PullRequestContext>()
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
@@ -57,24 +59,21 @@ function BranchPullRequestPanel({ projectId, worktreePath, drafts, setDrafts }: 
     }
   }, [refresh])
 
+  const draftKey = context?.kind === 'draft' ? JSON.stringify([projectId, worktreePath, context.branch]) : undefined
+  const draft = draftKey ? drafts.get(draftKey) : undefined
+
   async function publish(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (context?.kind !== 'draft' || publishing || created?.branch === context.branch) return
-    const data = new FormData(event.currentTarget)
-    const savedDraft = drafts.get(context.branch)
+    if (!draftKey || context?.kind !== 'draft' || publishing || created?.branch === context.branch) return
+    const fields = readDraft(event.currentTarget)
+    const savedDraft = drafts.get(draftKey)
     setPublishing(true)
     setError('')
     try {
       const { url } = await window.wu.invoke('review:createPr', {
-        projectId, worktreePath, branch: context.branch,
-        title: String(data.get('title') ?? ''), body: String(data.get('body') ?? ''),
+        projectId, worktreePath, branch: context.branch, ...fields,
       })
-      setDrafts((previous) => {
-        if (!savedDraft || previous.get(context.branch) !== savedDraft) return previous
-        const next = new Map(previous)
-        next.delete(context.branch)
-        return next
-      })
+      if (drafts.get(draftKey) === savedDraft) drafts.delete(draftKey)
       setCreated({ branch: context.branch, url })
       await refresh()
     } catch (cause) {
@@ -84,7 +83,6 @@ function BranchPullRequestPanel({ projectId, worktreePath, drafts, setDrafts }: 
     }
   }
 
-  const draft = context?.kind === 'draft' ? drafts.get(context.branch) : undefined
   const pr = context?.kind === 'existing' ? context : undefined
   const prUrl = pr?.url ?? (context?.kind === 'draft' && created?.branch === context.branch ? created.url : '')
   return (
@@ -111,12 +109,9 @@ function BranchPullRequestPanel({ projectId, worktreePath, drafts, setDrafts }: 
         ) : <p>Aucune vérification CI.</p>
       )}
       {context?.kind === 'unavailable' && <p>{context.message}</p>}
-      {context?.kind === 'draft' && !prUrl && (
-        <form key={context.branch} onSubmit={(event) => void publish(event)} onChange={(event) => {
-          const data = new FormData(event.currentTarget)
-          setDrafts((previous) => new Map(previous).set(context.branch, {
-            title: String(data.get('title') ?? ''), body: String(data.get('body') ?? ''),
-          }))
+      {context?.kind === 'draft' && draftKey && !prUrl && (
+        <form key={draftKey} onSubmit={(event) => void publish(event)} onChange={(event) => {
+          drafts.set(draftKey, readDraft(event.currentTarget))
         }}>
           <label>Titre de la PR<input name="title" defaultValue={draft?.title ?? context.title} required maxLength={256} /></label>
           <label>Description de la PR<textarea name="body" defaultValue={draft?.body ?? context.body} rows={6} maxLength={20_000} /></label>
