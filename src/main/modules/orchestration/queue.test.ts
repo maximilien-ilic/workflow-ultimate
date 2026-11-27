@@ -41,3 +41,21 @@ it('refuse les doublons, remet un départ différé en tête et continue après 
   expect(changed).toHaveBeenCalledWith('project', 'Tâche 1 : PTY absent')
   expect(next).toHaveBeenCalledOnce()
 })
+
+it('garde les erreurs de chaque projet et efface seulement celles des tâches réessayées avec succès', async () => {
+  const queue = createTaskQueue(() => true, vi.fn())
+  queue.enqueue(job(1), async () => { throw new Error('PTY absent') })
+  queue.enqueue({ ...job(2), projectId: 'autre' }, async () => { throw new Error('Dossier absent') })
+  await queue.drain()
+  expect(queue.list()).toEqual([])
+  expect(queue.failures('project')).toEqual([{ id: 1, message: 'Tâche 1 : PTY absent' }])
+  expect(queue.failures('autre')).toEqual([{ id: 2, message: 'Tâche 2 : Dossier absent' }])
+
+  queue.enqueue(job(3), async () => true)
+  await queue.drain()
+  expect(queue.failures('project')).toEqual([{ id: 1, message: 'Tâche 1 : PTY absent' }])
+  queue.enqueue(job(1), async () => true)
+  await queue.drain()
+  expect(queue.failures('project')).toEqual([])
+  expect(queue.failures('autre')).toEqual([{ id: 2, message: 'Tâche 2 : Dossier absent' }])
+})

@@ -59,15 +59,24 @@ function githubRepository(value: string): string | undefined {
   return /^\/([\w.-]+\/[\w.-]+)\/?$/.exec(url.pathname.replace(/\.git\/?$/, ''))?.[1]
 }
 
-async function pullRequestTarget(repo: string, branch: string) {
-  const localRef = HEAD_REF_PREFIX + branch
-  const [upstream, selectedRepo] = await Promise.all([
-    runGit(repo, ['for-each-ref', '--format=%(upstream:remotename)%00%(upstream:remoteref)', localRef]),
-    gh(repo, ['repo', 'view', '--json', 'url']),
-  ])
-  if (selectedRepo.code !== 0) throw new Error(selectedRepo.error)
-  const repository = githubRepository(z.object({ url: z.string() }).parse(JSON.parse(selectedRepo.stdout)).url)
+async function resolveGithubRepository(repo: string): Promise<string> {
+  const result = await gh(repo, ['repo', 'view', '--json', 'url'])
+  if (result.code !== 0) throw new Error(result.error)
+  const repository = githubRepository(z.object({ url: z.string() }).parse(JSON.parse(result.stdout)).url)
   if (!repository) throw new Error('La création de PR est disponible pour les dépôts GitHub.com.')
+  return repository
+}
+
+export async function resolveBranchPullRequestRepository(repo: string): Promise<string | undefined> {
+  if (await runGit(repo, ['remote'])) return resolveGithubRepository(repo)
+}
+
+async function pullRequestTarget(repo: string, branch: string, resolvedRepository?: string) {
+  const localRef = HEAD_REF_PREFIX + branch
+  const [upstream, repository] = await Promise.all([
+    runGit(repo, ['for-each-ref', '--format=%(upstream:remotename)%00%(upstream:remoteref)', localRef]),
+    resolvedRepository ?? resolveGithubRepository(repo),
+  ])
   const [remote, configuredRef] = upstream.split('\0')
   const ref = configuredRef || localRef
   if (remote === '.' || !ref.startsWith(HEAD_REF_PREFIX)) throw new Error(PUSH_REQUIRED)
@@ -89,9 +98,12 @@ function sameRepository(pr: z.infer<typeof pullRequest>, repository: string): bo
   return pr.headRepository?.nameWithOwner.toLowerCase() === repository.toLowerCase()
 }
 
-export async function readBranchPullRequest(repo: string, branch: string, startedAt: number): Promise<'OPEN' | 'MERGED' | undefined> {
-  if (!(await runGit(repo, ['remote']))) return
-  const target = await pullRequestTarget(repo, branch)
+export async function readBranchPullRequest(
+  repo: string, branch: string, startedAt: number, resolvedRepository?: string,
+): Promise<'OPEN' | 'MERGED' | undefined> {
+  const repository = resolvedRepository ?? (await resolveBranchPullRequestRepository(repo))
+  if (!repository) return
+  const target = await pullRequestTarget(repo, branch, repository)
   // shortcut: les 100 dernières PR de cette branche suffisent ; paginer si une branche est réutilisée davantage.
   const result = await listBranchPullRequests(repo, target, [
     '--state=all', `--limit=${PR_HISTORY_LIMIT}`, '--json', 'number,title,url,state,headRepository,mergedAt',
@@ -103,10 +115,10 @@ export async function readBranchPullRequest(repo: string, branch: string, starte
     return 'MERGED'
 }
 
-async function draftFor(repo: string, branch: string): Promise<PullRequestContext> {
+async function draftFor(repo: string, branch: string, inferIssue: boolean): Promise<PullRequestContext> {
   const [title = branch, ...parts] = (await runGit(repo, ['log', '-1', '--no-merges', '--format=%s%x00%b'])).split('\0')
   const body = parts.join('\0').trim()
-  const issue = /^(?:feat|fix|chore)\/(\d+)(?:-|$)/.exec(branch)?.[1]
+  const issue = inferIssue ? /^(?:feat|fix|chore)\/(\d+)(?:-|$)/.exec(branch)?.[1] : undefined
   const closes = issue && `Closes #${issue}`
   const hasClosingLine = closes && body.split('\n').some((line) => line.trim().toLowerCase() === closes.toLowerCase())
   const description = closes && !hasClosingLine
@@ -115,14 +127,14 @@ async function draftFor(repo: string, branch: string): Promise<PullRequestContex
   return { kind: 'draft', branch, title: (title || branch).slice(0, 256), body: description }
 }
 
-export async function readPullRequest(repo: string): Promise<PullRequestContext> {
+export async function readPullRequest(repo: string, inferIssue: (branch: string) => boolean = () => true): Promise<PullRequestContext> {
   const [branch, remotes] = await Promise.all([currentBranch(repo), runGit(repo, ['remote'])])
   if (!branch) return { kind: 'unavailable', message: 'Sélectionnez un worktree rattaché à une branche.' }
   if (!remotes) return { kind: 'unavailable', message: 'Aucun dépôt distant configuré.' }
   const target = await pullRequestTarget(repo, branch)
   const result = await listBranchPullRequests(repo, target, ['--state=open', '--json', 'number,title,url,state,headRepository'])
   const pr = pullRequest.array().parse(result).find((pr) => pr.state === 'OPEN' && sameRepository(pr, target.repository))
-  if (!pr) return draftFor(repo, branch)
+  if (!pr) return draftFor(repo, branch, inferIssue(branch))
   const { number, title, url, state } = pr
   return { kind: 'existing', number, title, url, state, checks: await readChecks(repo, url) }
 }

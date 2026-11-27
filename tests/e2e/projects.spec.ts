@@ -133,3 +133,37 @@ exec "$WU_REAL_GIT" "$@"
     await app.close()
   }
 })
+
+test('annuler le retrait d’un projet conserve sa tâche locale', async () => {
+  const repo = join(dir, 'avec-taches')
+  execFileSync('git', ['init', '-q', '-b', 'main', repo])
+  const app = await launch()
+  try {
+    const page = await app.firstWindow()
+    const { id } = await page.evaluate((path) => window.wu.invoke('projects:add', { path }), repo)
+    await page.evaluate((projectId) => window.wu.invoke('tasks:create', {
+      projectId, title: 'Notes à conserver', body: 'Une tâche locale',
+    }), id)
+    await page.reload()
+
+    const remove = page.getByRole('button', { name: 'Retirer avec-taches' })
+    const confirmation = page.getByRole('dialog', { name: 'Retirer le projet avec-taches' })
+    await remove.press('Enter')
+    await expect(confirmation).toBeVisible()
+    await expect(confirmation).toContainText('La tâche de ce projet sera supprimée.')
+    await expect(confirmation.getByRole('button', { name: 'Annuler' })).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(confirmation).toBeHidden()
+    await expect(remove).toBeFocused()
+    await expect(page.evaluate((projectId) => window.wu.invoke('projects:remove', { id: projectId }), id))
+      .rejects.toThrow(/confirmer/)
+    expect(await page.evaluate((projectId) => window.wu.invoke('tasks:list', { projectId }), id))
+      .toEqual([expect.objectContaining({ title: 'Notes à conserver' })])
+
+    await remove.press('Enter')
+    await confirmation.getByRole('button', { name: 'Retirer le projet et ses tâches' }).press('Enter')
+    await expect(page.getByText('Aucun projet.')).toBeVisible()
+  } finally {
+    await app.close()
+  }
+})

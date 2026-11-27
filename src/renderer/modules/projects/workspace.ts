@@ -36,7 +36,7 @@ function readRecent(): string[] {
   return []
 }
 
-export function useWorkspace() {
+export function useWorkspace({ followSelection = false } = {}) {
   const [groups, setGroups] = useState<ProjectGroup[]>([])
   const [path, setPath] = useState<string>()
   const [recent, setRecent] = useState(readRecent)
@@ -48,12 +48,27 @@ export function useWorkspace() {
   }, [])
 
   useEffect(() => {
+    if (followSelection) return
     try {
       localStorage.setItem(recentKey, JSON.stringify(recent))
     } catch {
       // Le classement reste accessible tant que la fenêtre est ouverte.
     }
-  }, [recent])
+  }, [followSelection, recent])
+
+  useEffect(() => {
+    if (!followSelection) return
+    const sync = () => setRecent(readRecent())
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === recentKey || event.key === null) sync()
+    }
+    window.addEventListener('storage', onStorage)
+    window.addEventListener('focus', sync)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('focus', sync)
+    }
+  }, [followSelection])
 
   function expand(id: string, expanded: boolean) {
     setCollapsed((previous) => {
@@ -129,18 +144,17 @@ export function useWorkspace() {
       polling.current = true
       const request = revision.current
       try {
-        const statuses = await window.wu.invoke('worktrees:status', { projectId })
+        const worktrees = await window.wu.invoke('worktrees:snapshot', { projectId })
         if (cancelled || request !== revision.current) return
-        const byPath = new Map(statuses.map(({ path, status }) => [path, status]))
         setGroups((previous) =>
           previous.map((group) =>
             group.project.id === projectId
               ? {
                   ...group,
-                  worktrees: group.worktrees.map((worktree) => {
-                    const status = byPath.get(worktree.path) ?? null
-                    return { ...worktree, branch: status ? status.branch : worktree.branch, status }
-                  }),
+                  worktrees: worktrees.map((worktree) => ({
+                    ...worktree,
+                    branch: worktree.status ? worktree.status.branch : worktree.branch,
+                  })),
                 }
               : group,
           ),

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { chmodSync, mkdtempSync, rmSync } from 'node:fs'
 import { constants, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -76,6 +77,59 @@ describe('pty-host', () => {
       }
     }
   })
+
+  it('isole le PTY après un collage partiel expiré et renvoie le lot entier dans un nouveau PTY', async () => {
+    const { host, events, output, waitFor } = setup()
+    const opening = '\x1b[200~'
+    const closing = '\x1b[201~\r'
+    const data = opening + '界'.repeat(256 * 1024) + closing
+    const hash = createHash('sha256').update(data).digest('hex')
+    const spawnReader = (id: string, source: string) =>
+      host.handle({ type: 'spawn', id, file: process.execPath, args: ['-e', source], ...base })
+    spawnReader('initial', `
+      process.stdin.setRawMode(true)
+      process.stdin.once('data', (bytes) => {
+        if (bytes.toString().startsWith(${JSON.stringify(opening)})) console.log('ouverture reçue')
+        process.stdin.pause()
+      })
+      console.log('prêt')
+      setInterval(() => {}, 1000)
+    `)
+    try {
+      await waitFor(() => output('initial').includes('prêt'))
+      host.handle({ type: 'write', id: 'initial', data, receipt: 'initial' })
+      await waitFor(() => output('initial').includes('ouverture reçue'))
+      const failure = () => events.find((event) => event.type === 'error' && event.receipt === 'initial')
+      await waitFor(() => Boolean(failure()), 7_000)
+      expect(failure()).toMatchObject({ message: expect.stringContaining('nouveau terminal') })
+      expect(events.some((event) => event.id === 'initial' && event.type === 'exit')).toBe(false)
+      host.handle({ type: 'write', id: 'initial', data, receipt: 'refusé' })
+      expect(events.at(-1)).toMatchObject({ type: 'error', receipt: 'refusé' })
+
+      spawnReader('nouveau', `
+        const crypto = require('node:crypto')
+        process.stdin.setRawMode(true)
+        const chunks = []
+        let size = 0
+        process.stdin.on('data', (bytes) => {
+          chunks.push(bytes)
+          size += bytes.length
+          if (size < ${Buffer.byteLength(data)}) return
+          console.log(crypto.createHash('sha256').update(Buffer.concat(chunks)).digest('hex'))
+          process.exit(0)
+        })
+        console.log('prêt')
+      `)
+      await waitFor(() => output('nouveau').includes('prêt'))
+      host.handle({ type: 'write', id: 'nouveau', data, receipt: 'réessai' })
+      await waitFor(() => output('nouveau').includes(hash))
+      expect(events).toContainEqual({ type: 'written', id: 'nouveau', receipt: 'réessai' })
+    } finally {
+      host.handle({ type: 'kill', id: 'initial' })
+      if (events.some((event) => event.id === 'nouveau' && event.type === 'spawned'))
+        host.handle({ type: 'kill', id: 'nouveau' })
+    }
+  }, 15_000)
 
   it('rejoue la sortie déjà produite, même après la fin du processus', async () => {
     const { host, events, waitFor } = setup()

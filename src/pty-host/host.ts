@@ -13,6 +13,7 @@ type Terminal = {
   socket: ReadStream
   writes: PendingWrite[]
   writeTimer?: ReturnType<typeof setTimeout>
+  partialConfirmedWrite?: boolean
   buffer: RingBuffer
   exited: boolean
   closing: boolean
@@ -22,6 +23,7 @@ type Terminal = {
 
 const TERMINATION_GRACE_MS = 500
 const WRITE_RETRY_MS = 5
+const PARTIAL_WRITE_RECOVERY = 'Un collage a été écrit partiellement. Fermez ce terminal, lancez ou reprenez l’agent dans un nouveau terminal, puis renvoyez les commentaires.'
 
 const isDirectory = (path: string) => statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false
 
@@ -45,6 +47,16 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
     for (const { request } of term.writes.splice(0)) error(request, message)
   }
 
+  function interruptWrite(term: Terminal, write: PendingWrite, message: string): void {
+    if (write.request.receipt && write.offset > 0) {
+      // L’éditeur interactif peut encore attendre le marqueur de fin du collage.
+      term.partialConfirmedWrite = true
+      failWrites(term, `${message} ${PARTIAL_WRITE_RECOVERY}`)
+      return
+    }
+    failWrites(term, message)
+  }
+
   function scheduleWrite(term: Terminal, delay = 0): void {
     term.writeTimer ??= setTimeout(() => {
       term.writeTimer = undefined
@@ -52,7 +64,7 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
       if (!write) return
       if (term.socket.destroyed) return failWrites(term, 'Le PTY est fermé.')
       if (write.deadline !== undefined && performance.now() >= write.deadline)
-        return failWrites(term, 'Délai d’écriture dans le PTY dépassé.')
+        return interruptWrite(term, write, 'Délai d’écriture dans le PTY dépassé.')
 
       try {
         if (write.offset < write.data.length) {
@@ -63,7 +75,7 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
       } catch (cause) {
         const code = (cause as NodeJS.ErrnoException).code
         if (code === 'EAGAIN' || code === 'EINTR') return scheduleWrite(term, WRITE_RETRY_MS)
-        return failWrites(term, `Écriture PTY impossible : ${String(cause)}`)
+        return interruptWrite(term, write, `Écriture PTY impossible : ${String(cause)}`)
       }
 
       if (write.offset === write.data.length) {
@@ -173,6 +185,7 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
         if (term.exited) return error(req, `Terminal « ${req.id} » déjà terminé`)
         if (req.type === 'write') {
           if (term.closing) return error(req, 'Le PTY est en cours de fermeture.')
+          if (req.receipt && term.partialConfirmedWrite) return error(req, PARTIAL_WRITE_RECOVERY)
           const deadline = req.receipt ? performance.now() + CONFIRMED_WRITE_TIMEOUT_MS : undefined
           term.writes.push({ request: req, data: Buffer.from(req.data), offset: 0, deadline })
           scheduleWrite(term)

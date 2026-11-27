@@ -16,6 +16,7 @@ type Row = Identity & { state: AgentState; updated_at: number }
 type Live = { terminalId: string; owner: WebContents }
 
 export type AgentSessions = {
+  isOpen(id: string): boolean
   activeCount(): number
   onSlotAvailable(listener: () => void): void
   start(request: IpcRequest<'agents:start'>, owner: WebContents): Promise<AgentSession>
@@ -73,7 +74,11 @@ export function registerAgentHandlers(
         state,
       } satisfies AgentEvent)
     if (state === 'done' || state === 'error') notifyAvailable()
-    opts.onStateChange?.(toSession({ ...current, state, updated_at: updatedAt }))
+    try {
+      opts.onStateChange?.(toSession({ ...current, state, updated_at: updatedAt }))
+    } catch (error) {
+      console.warn('Impossible de publier le nouvel état de l’agent :', error)
+    }
   }
 
   terminals.onExit((terminalId, exitCode) => {
@@ -177,6 +182,7 @@ export function registerAgentHandlers(
 
   return {
     start,
+    isOpen: (id) => live.has(id),
     onSlotAvailable: (listener) => void slotListeners.add(listener),
     activeCount: () => [...live.keys()].filter((id) => {
       const state = row(id)?.state

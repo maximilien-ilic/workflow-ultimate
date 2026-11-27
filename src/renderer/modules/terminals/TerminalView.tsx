@@ -8,6 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useState } from 'react'
 import { HISTORY_LINES } from '../../../shared/terminal-history'
 import { terminalStore } from './terminal-store'
+import { mountedTerminals } from './terminal-instances'
 import { RESTORED_SEPARATOR, trackTerminalHistory } from './terminal-history'
 import { chunksForWrite } from './chunks'
 import { unseen } from './unseen'
@@ -22,10 +23,6 @@ type Props = {
 
 const ack = (id: string, chars: number) => void window.wu.invoke('terminal:ack', { id, chars })
 
-// Lecture seule du texte affiché, par id de volet (le rendu WebGL ne laisse aucun texte dans le DOM).
-// Sert aux tests e2e et au débogage ; ne donne accès à rien que le renderer n'ait déjà.
-const mounted = new Map<string, Terminal>()
-
 // Un split remonte xterm alors qu'un collage peut encore attendre une réponse IPC.
 const pendingInput = new Map<string, Promise<void>>()
 
@@ -36,7 +33,7 @@ function enqueueInput(id: string, data: string): void {
       try {
         await window.wu.invoke('terminal:write', { id, data: chunk })
       } catch (error) {
-        mounted.get(id)?.write(`\x1b[31m[saisie non transmise : ${String(error)}]\x1b[0m\r\n`)
+        mountedTerminals.get(id)?.write(`\x1b[31m[saisie non transmise : ${String(error)}]\x1b[0m\r\n`)
       }
     }
   })
@@ -46,19 +43,9 @@ function enqueueInput(id: string, data: string): void {
   })
 }
 
-// Dernières lignes non vides affichées par un terminal (aperçu de la vue d'ensemble des agents).
-export function lastLines(id: string, count: number): string[] {
-  const buffer = mounted.get(id)?.buffer.active
-  if (!buffer) return []
-  const lines: string[] = []
-  for (let i = buffer.length - 1; i >= 0 && lines.length < count; i--) {
-    const line = buffer.getLine(i)?.translateToString(true) ?? ''
-    if (line.trim()) lines.unshift(line)
-  }
-  return lines
-}
+// Le rendu WebGL ne laisse pas de texte dans le DOM. Cette lecture sert aux tests et au débogage.
 ;(window as unknown as { __wuTerminalText: (id: string) => string }).__wuTerminalText = (id) => {
-  const buffer = mounted.get(id)?.buffer.active
+  const buffer = mountedTerminals.get(id)?.buffer.active
   if (!buffer) return ''
   const lines: string[] = []
   for (let i = 0; i < buffer.length; i++) lines.push(buffer.getLine(i)?.translateToString(true) ?? '')
@@ -86,7 +73,7 @@ export function TerminalView({ id, cwd, active, focusRequest, onFocus }: Props) 
       allowProposedApi: true, // requis par l'addon image (sixel)
       linkHandler: { activate: openOnCtrlClick }, // liens OSC 8 émis par les programmes
     })
-    mounted.set(id, term)
+    mountedTerminals.set(id, term)
     termRef.current = term
     const fit = new FitAddon()
     const search = new SearchAddon()
@@ -232,7 +219,7 @@ export function TerminalView({ id, cwd, active, focusRequest, onFocus }: Props) 
       input.dispose()
       resized.dispose()
       unsubscribe()
-      mounted.delete(id)
+      mountedTerminals.delete(id)
       term.dispose()
       termRef.current = null
     }

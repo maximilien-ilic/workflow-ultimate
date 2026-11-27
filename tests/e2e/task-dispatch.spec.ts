@@ -84,7 +84,7 @@ test('envoie une tâche à Codex avec son contexte et conserve le lien vers la s
     await sendToCodex(board)
     await expect(board.getByRole('region', { name: 'En cours' })).toContainText(task.title)
     await board.getByRole('button', { name: 'Fermer' }).click()
-    const branch = `feat/${task.id}-tester-l-envoi`
+    const branch = `feat/task-${task.id}-tester-l-envoi`
     await expect(page.getByRole('tab', { name: `Codex · ${branch}` })).toBeVisible()
     await expect.poll(() => readFileSync(promptFile, 'utf8')).toContain('AGENTS.md')
     const prompt = readFileSync(promptFile, 'utf8')

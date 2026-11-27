@@ -19,7 +19,7 @@ function openAgent(window: BrowserWindow, terminalId: string): void {
   else selectTerminal()
 }
 
-function notify(window: BrowserWindow, session: AgentSession, title: string): void {
+function notify(window: BrowserWindow, session: AgentSession, title: string, soundEnabled: () => boolean): void {
   const { terminalId } = session
   if (!terminalId || !Notification.isSupported()) return
   const notification = new Notification({
@@ -30,7 +30,7 @@ function notify(window: BrowserWindow, session: AgentSession, title: string): vo
   })
   notification.on('click', () => openAgent(window, terminalId))
   // Libnotify ne transmet pas l'option de son d'Electron. On joue le son depuis l'appli.
-  if (notificationSound()) {
+  if (soundEnabled()) {
     notification.once('show', () => {
       if (!window.isDestroyed())
         window.webContents.send('agents:desktop', { type: 'play-sound' } satisfies AgentDesktopEvent)
@@ -39,30 +39,43 @@ function notify(window: BrowserWindow, session: AgentSession, title: string): vo
   notification.show()
 }
 
-function updateMenu(tray: Tray, window: BrowserWindow): void {
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'Afficher Workflow Ultimate', click: () => showMainWindow(window) },
-      {
-        label: 'Son des notifications',
-        type: 'checkbox',
-        checked: notificationSound(),
-        click: ({ checked }) => {
-          setNotificationSound(checked)
-          updateMenu(tray, window)
-        },
-      },
-    ]),
-  )
-}
-
 export function registerAgentDesktop(window: BrowserWindow): (session: AgentSession) => void {
   const appIcon = nativeImage.createFromPath(appIconPath).resize({ width: 32, height: 32 })
   const waitingIcon = nativeImage.createFromPath(waitingIconPath)
   const tray = new Tray(appIcon)
   tray.setToolTip(appTitle)
   tray.on('click', () => showMainWindow(window))
-  updateMenu(tray, window)
+  let sound = false
+  function soundEnabled(): boolean {
+    try {
+      sound = notificationSound()
+    } catch (error) {
+      console.warn('Impossible de lire le réglage sonore des notifications :', error)
+    }
+    return sound
+  }
+
+  function updateMenu(): void {
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'Afficher Workflow Ultimate', click: () => showMainWindow(window) },
+      {
+        label: 'Son des notifications',
+        type: 'checkbox',
+        checked: soundEnabled(),
+        click: ({ checked }) => {
+          try {
+            setNotificationSound(checked)
+            sound = checked
+          } catch (error) {
+            console.warn('Impossible d’enregistrer le réglage sonore des notifications :', error)
+          }
+          updateMenu()
+        },
+      },
+    ]))
+  }
+
+  updateMenu()
   app.once('will-quit', () => tray.destroy())
   const waitingSessions = new Set<string>()
 
@@ -75,6 +88,6 @@ export function registerAgentDesktop(window: BrowserWindow): (session: AgentSess
     if (wasWaiting !== hasWaiting) tray.setImage(hasWaiting ? waitingIcon : appIcon)
     if (window.isDestroyed() || window.isFocused() || (state !== 'waiting' && state !== 'done')) return
     const name = agent === 'claude-code' ? 'Claude Code' : 'Codex'
-    notify(window, session, `${name} ${notificationLabels[state]}`)
+    notify(window, session, `${name} ${notificationLabels[state]}`, soundEnabled)
   }
 }

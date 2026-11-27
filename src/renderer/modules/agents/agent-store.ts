@@ -1,4 +1,4 @@
-import type { AgentSession, AgentState, QuickAgentStarted } from '../../../shared/ipc'
+import type { AgentEvent, AgentSession, AgentState, QuickAgentStarted } from '../../../shared/ipc'
 import { terminalStore } from '../terminals/terminal-store'
 import notificationSoundUrl from '../shell/notification.wav'
 
@@ -40,9 +40,19 @@ function changed() {
   listeners.forEach((l) => l())
 }
 
-window.wu.onAgentEvent(({ terminalId, state }) => {
+// Le PTY peut émettre des événements pendant la restauration, avant la création de l’onglet.
+const EARLY_EVENT_LIMIT = 100
+const earlyStates = new Map<string, AgentEvent>()
+window.wu.onAgentEvent((event) => {
+  const { terminalId, sessionId, state } = event
   const info = agents.get(terminalId)
-  if (!info) return
+  if (!info) {
+    earlyStates.delete(terminalId)
+    earlyStates.set(terminalId, event)
+    if (earlyStates.size > EARLY_EVENT_LIMIT) earlyStates.delete(earlyStates.keys().next().value!)
+    return
+  }
+  if (info.sessionId !== sessionId) return
   agents.set(terminalId, { ...info, state })
   changed()
 })
@@ -61,7 +71,7 @@ window.wu.onTerminalEvent((event) => {
   const info = agents.get(event.id)
   if (!info) {
     earlyExits.add(event.id)
-    if (earlyExits.size > 100) earlyExits.delete(earlyExits.values().next().value!)
+    if (earlyExits.size > EARLY_EVENT_LIMIT) earlyExits.delete(earlyExits.values().next().value!)
     return
   }
   agents.set(event.id, { ...info, exited: true })
@@ -96,9 +106,14 @@ export const agentStore = {
   stateOf: (terminalId: string) => agents.get(terminalId)?.state,
   started(terminalId: string, info: Omit<AgentInfo, 'startedAt' | 'state' | 'exited'>, state: AgentState) {
     // Un événement a pu arriver avant la réponse de agents:start : il est plus récent, on le garde.
+    const early = earlyStates.get(terminalId)
+    earlyStates.delete(terminalId)
     const current = agents.get(terminalId)
+    const latest = early?.sessionId === info.sessionId ? early : current
     const exited = earlyExits.delete(terminalId)
-    agents.set(terminalId, { ...info, startedAt: Date.now(), state: current?.state ?? state, exited })
+    agents.set(terminalId, {
+      ...info, startedAt: Date.now(), state: latest?.sessionId === info.sessionId ? latest.state : state, exited,
+    })
     changed()
   },
 }

@@ -195,6 +195,44 @@ test('corriger une description refusée en gardant les deux champs et le focus',
   }
 })
 
+test('les textes sans espaces restent dans leur colonne du Kanban', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'wu-e2e-tasks-overflow-')))
+  const { app, page } = await launchWithProject(dir)
+  try {
+    const title = 'W'.repeat(256)
+    const body = 'A'.repeat(1_000)
+    await page.evaluate(async ({ title, body }) => {
+      const [project] = await window.wu.invoke('projects:list', {})
+      const projectId = project!.id
+      await window.wu.invoke('tasks:create', { projectId, title, body })
+      const tasks = await window.wu.invoke('tasks:create', { projectId, title: 'Carte voisine', body: '' })
+      const neighbour = tasks.find(({ title }) => title === 'Carte voisine')!
+      await window.wu.invoke('tasks:move', { projectId, id: neighbour.id, status: 'doing' })
+    }, { title, body })
+    await page.keyboard.press('Control+Shift+K')
+    const board = page.getByRole('dialog', { name: 'Tableau de tâches' })
+    const todo = board.getByRole('region', { name: 'À faire' })
+    const doing = board.getByRole('region', { name: 'En cours' })
+    await expect(doing).toContainText('Carte voisine')
+    const adjacent = (await doing.boundingBox())!
+    expect((await todo.boundingBox())!.y).toBe(adjacent.y)
+    for (const text of [title, body]) {
+      const right = await todo.getByText(text, { exact: true }).evaluate((element) => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        return range.getBoundingClientRect().right
+      })
+      expect(right).toBeLessThanOrEqual(adjacent.x)
+    }
+    expect(await board.evaluate((element) => element.scrollWidth)).toBe(
+      await board.evaluate((element) => element.clientWidth),
+    )
+  } finally {
+    await app.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('retrouve une tâche au clavier et distingue deux projets avec le même titre', async () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'wu-e2e-task-palette-')))
   const { app, page } = await launchWithProject(dir)

@@ -37,6 +37,7 @@ export function registerTaskQueue(agents: Capacity) {
     }
     return snapshot()
   })
+  handle('tasks:dispatchFailures', ({ projectId }) => queue.failures(projectId))
   handle('tasks:reorderQueue', ({ id, direction }) => {
     queue.move(id, direction)
     return snapshot()

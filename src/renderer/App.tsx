@@ -49,9 +49,10 @@ export function App() {
       leftPanel={<ProjectSidebar workspace={workspace} />}
       rightPanel={selection && (
         <PullRequestPanel
-          key={`${selection.project.id}:${selection.worktree.path}:${selection.worktree.branch}`}
+          key={`${selection.project.id}:${selection.worktree.path}`}
           projectId={selection.project.id}
           worktreePath={selection.worktree.path}
+          branch={selection.worktree.branch}
         />
       )}
     >

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
-import { beforeEach, expect, it, vi } from 'vitest'
+import type { MenuItem, MenuItemConstructorOptions } from 'electron'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { AgentSession } from '../../../shared/ipc'
 
 const mocks = vi.hoisted(() => ({
@@ -8,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   send: vi.fn(),
   sound: vi.fn(() => true),
   notifications: vi.fn(),
+  shown: vi.fn(),
+  setSound: vi.fn(),
+  menu: vi.fn<(items: MenuItemConstructorOptions[]) => void>(),
 }))
 vi.mock('electron', () => ({
   Tray: class extends EventEmitter {
@@ -16,7 +20,7 @@ vi.mock('electron', () => ({
     setContextMenu() {}
     destroy() {}
   },
-  Menu: { buildFromTemplate: vi.fn() },
+  Menu: { buildFromTemplate: mocks.menu },
   Notification: class extends EventEmitter {
     static isSupported = () => true
     constructor(options: unknown) {
@@ -24,6 +28,7 @@ vi.mock('electron', () => ({
       mocks.notifications(options, this)
     }
     show() {
+      mocks.shown()
       this.emit('show')
     }
   },
@@ -31,7 +36,7 @@ vi.mock('electron', () => ({
   app: { once: vi.fn() },
 }))
 vi.mock('./single-instance', () => ({ showMainWindow: mocks.showWindow }))
-vi.mock('./settings', () => ({ notificationSound: mocks.sound, setNotificationSound: vi.fn() }))
+vi.mock('./settings', () => ({ notificationSound: mocks.sound, setNotificationSound: mocks.setSound }))
 
 const { registerAgentDesktop } = await import('./agent-desktop')
 const session: AgentSession = {
@@ -51,8 +56,10 @@ const window = (focused: boolean) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.sound.mockReturnValue(true)
+  mocks.sound.mockReset().mockReturnValue(true)
+  mocks.setSound.mockReset()
 })
+afterEach(() => vi.restoreAllMocks())
 
 it('garde le badge tant qu’au moins une session attend, même si la fenêtre a le focus', () => {
   const change = registerAgentDesktop(window(true))
@@ -89,4 +96,28 @@ it('conserve la notification visuelle quand le son est coupé', () => {
   registerAgentDesktop(window(false))(session)
   expect(mocks.notifications).toHaveBeenCalledOnce()
   expect(mocks.send).not.toHaveBeenCalled()
+})
+
+
+it('affiche le tray et la notification même si le réglage sonore est illisible', () => {
+  mocks.sound.mockImplementation(() => { throw new Error('EACCES') })
+  const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const change = registerAgentDesktop(window(false))
+  change(session)
+  expect(mocks.menu).toHaveBeenCalledOnce()
+  expect(mocks.shown).toHaveBeenCalledOnce()
+  expect(mocks.send).not.toHaveBeenCalled()
+  expect(log).toHaveBeenCalled()
+})
+
+it('signale un refus d’écriture et remet le menu à sa dernière valeur effective', () => {
+  mocks.setSound.mockImplementation(() => { throw new Error('EACCES') })
+  const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  registerAgentDesktop(window(false))
+  const checkbox = () => mocks.menu.mock.lastCall?.[0].find(({ type }) => type === 'checkbox')
+  expect(checkbox()?.checked).toBe(true)
+  checkbox()?.click?.({ checked: false } as MenuItem, undefined, {} as Electron.KeyboardEvent)
+  expect(mocks.menu).toHaveBeenCalledTimes(2)
+  expect(checkbox()?.checked).toBe(true)
+  expect(log).toHaveBeenCalled()
 })
