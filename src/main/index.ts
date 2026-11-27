@@ -74,7 +74,7 @@ void app.whenReady().then(async () => {
     },
   })
   registerReviewHandlers(db, agents)
-  registerTaskHandlers(db)
+  registerTaskHandlers(db, agents)
   const socket = socketPath
     ? await startAgentSocket({
         path: socketPath,

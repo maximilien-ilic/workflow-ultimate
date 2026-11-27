@@ -73,7 +73,7 @@ Modules prévus **après la v1** (ne pas coder avant) : `browser` (navigateur in
 ### orchestration
 - Tableau de tâches par projet (À faire / En cours / En revue / Fini), qu'on peut importer depuis les issues GitHub.
 - Le tableau annonce les refus d'enregistrement et conserve la saisie pour permettre sa correction au clavier.
-- « Envoyer à un agent » : crée le worktree, lance l'agent avec le contenu de la tâche comme prompt, puis relie la tâche à la session.
+- « Envoyer à un agent » : crée le worktree, lance Claude Code ou Codex avec le titre, la description, le lien vers la spec et le rappel d’AGENTS.md. Après un lancement réussi, la tâche est liée à la session et passe en « En cours ».
 - File d'attente avec un nombre maximum d'agents simultanés (réglable, 3 par défaut).
 
 ### palette

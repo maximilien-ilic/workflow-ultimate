@@ -9,6 +9,8 @@ import { PullRequestPanel } from './modules/review/PullRequestPanel'
 import { ReviewView } from './modules/review/ReviewView'
 import { TerminalArea } from './modules/terminals/TerminalArea'
 import { ProjectPicker } from './modules/projects/ProjectPicker'
+import { agentStore } from './modules/agents/agent-store'
+import { terminalStore } from './modules/terminals/terminal-store'
 import { TaskBoard } from './modules/orchestration/TaskBoard'
 
 export function App() {
@@ -18,6 +20,14 @@ export function App() {
   useEffect(() => {
     window.wu.invoke('app:info', {}).then(setInfo, (e: unknown) => setError(String(e)))
   }, [])
+  const { refresh } = workspace
+  useEffect(() => window.wu.onTaskAgentStarted(({ session, terminalId, branch }) => {
+    const name = session.agent === 'claude-code' ? 'Claude' : 'Codex'
+    const title = `${name} · ${branch}`
+    agentStore.started(terminalId, { sessionId: session.id, agent: session.agent, title }, session.state)
+    terminalStore.openAttachedTab(session.cwd, title, terminalId)
+    void refresh()
+  }), [refresh])
   const selection = workspace.selected
   return (
     <ShellLayout

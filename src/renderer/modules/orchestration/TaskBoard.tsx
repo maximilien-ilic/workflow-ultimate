@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { taskStatuses, type Task, type TaskStatus } from '../../../shared/ipc'
 import { registerCommand } from '../palette/commands'
+import { TaskDispatchForm, type SendTask } from './TaskDispatchForm'
 import './task-board.css'
 
 type Draft = Pick<Task, 'title' | 'body'>
@@ -57,9 +58,9 @@ function TaskForm({ task, onSave, onClose }: { task?: Task; onSave: SaveDraft; o
   )
 }
 
-type CardProps = { task: Task; lastMove: Move | null; onMove: (direction: Direction) => void; onSave: SaveDraft }
+type CardProps = { task: Task; lastMove: Move | null; onMove: (direction: Direction) => void; onSave: SaveDraft; onSend: SendTask }
 
-function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
+function TaskCard({ task, lastMove, onMove, onSave, onSend }: CardProps) {
   const [editing, setEditing] = useState(false)
   const [editorCloseFocus, setEditorCloseFocus] = useState<boolean | null>(null)
   const closeEditor = (restoreFocus: boolean) => {
@@ -91,6 +92,7 @@ function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
       {moveButton(-1)}
       <button type="button" autoFocus={focusEdit} onClick={() => setEditing(true)} aria-label={`Éditer « ${task.title} »`}>Éditer</button>
       {moveButton(1)}
+      {task.status === 'todo' && <TaskDispatchForm send={onSend} />}
     </li>
   )
 }
@@ -166,6 +168,7 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
           <ul>
             {tasks.filter((task) => task.status === status).map((task) => (
               <TaskCard key={task.id} task={task} lastMove={lastMove} onMove={(direction) => move(task, direction)}
+                onSend={(agent) => apply(window.wu.invoke('tasks:dispatch', { projectId, id: task.id, agent }))}
                 onSave={(draft) => apply(window.wu.invoke('tasks:update', { projectId, id: task.id, ...draft }))} />
             ))}
           </ul>

@@ -40,6 +40,8 @@ export type TerminalHistory = z.infer<typeof terminalHistorySchema>
 // Colonnes du tableau de tâches, dans l'ordre d'affichage.
 export const taskStatuses = ['todo', 'doing', 'review', 'done'] as const
 // Partagée avec l'import des issues GitHub : une tâche importée doit rester éditable.
+export const AGENT_PROMPT_MAX_LENGTH = 20_000
+const agentKind = z.enum(['claude-code', 'codex'])
 export const TASK_BODY_MAX_LENGTH = 20_000
 const taskDraft = { title: z.string().trim().min(1, 'titre vide').max(256), body: z.string().max(TASK_BODY_MAX_LENGTH) }
 const taskId = z.number().int().positive()
@@ -92,8 +94,8 @@ export const ipcRequestSchemas = {
     .object({
       terminalId: z.uuid(),
       cwd: absolutePath,
-      agent: z.enum(['claude-code', 'codex']),
-      prompt: z.string().max(20_000).optional(),
+      agent: agentKind,
+      prompt: z.string().max(AGENT_PROMPT_MAX_LENGTH).optional(),
       cols: dimension,
       rows: dimension,
     })
@@ -145,6 +147,7 @@ export const ipcRequestSchemas = {
         .strict(),
     })
     .strict(),
+  'tasks:dispatch': z.strictObject({ projectId: z.uuid(), id: taskId, agent: agentKind }),
   'tasks:list': z.object({ projectId: z.uuid() }).strict(),
   'tasks:create': z.object({ projectId: z.uuid(), ...taskDraft }).strict(),
   'tasks:update': z.object({ projectId: z.uuid(), id: taskId, ...taskDraft }).strict(),
@@ -201,6 +204,7 @@ export type AgentSession = {
 }
 // Poussé sur le canal `agent:event` à la fenêtre qui a lancé l'agent.
 export type AgentDesktopEvent = { type: 'show-terminal'; terminalId: string } | { type: 'play-sound' }
+export type TaskAgentStarted = { session: AgentSession; terminalId: string; branch: string }
 export type AgentEvent = { sessionId: string; terminalId: string; state: AgentState }
 export type ChangedFile = {
   status: 'added' | 'modified' | 'deleted' | 'renamed'
@@ -253,6 +257,7 @@ interface IpcResponses {
   'review:addComment': ReviewComment[]
   'review:sendComments': ReviewComment[]
   'review:createPr': { url: string }
+  'tasks:dispatch': Task[]
   'tasks:list': Task[]
   'tasks:create': Task[]
   'tasks:update': Task[]

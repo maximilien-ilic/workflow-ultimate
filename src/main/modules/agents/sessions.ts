@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import type { WebContents } from 'electron'
-import type { AgentEvent, AgentSession, AgentState } from '../../../shared/ipc'
+import type { AgentEvent, AgentSession, AgentState, IpcRequest } from '../../../shared/ipc'
 import { handle } from '../shell/ipc'
 import { shellEnv, type Terminals } from '../terminals/ipc'
 import { claudeArgs, type NotifyTarget } from './claude-code'
@@ -14,6 +14,7 @@ type Row = Identity & { state: AgentState; updated_at: number }
 type Live = { terminalId: string; owner: WebContents }
 
 export type AgentSessions = {
+  start(request: IpcRequest<'agents:start'>, owner: WebContents): Promise<AgentSession>
   // Pour le socket : seule une session lancée dans cette exécution accepte des événements.
   sessionAgent(sessionId: string): AgentKind | undefined
   onSocketEvent(event: AgentSocketEvent): void
@@ -137,9 +138,11 @@ export function registerAgentHandlers(
     return toSession(row(id)!)
   }
 
-  handle('agents:start', ({ cwd, agent, ...req }, event) =>
-    launch({ id: randomUUID(), cwd, agent, external_id: null }, false, req, event.sender),
-  )
+  function start({ cwd, agent, ...req }: IpcRequest<'agents:start'>, owner: WebContents) {
+    return launch({ id: randomUUID(), cwd, agent, external_id: null }, false, req, owner)
+  }
+
+  handle('agents:start', (request, event) => start(request, event.sender))
 
   handle('agents:resume', ({ sessionId, terminalId, cols, rows }, event) => {
     const saved = row(sessionId)
@@ -154,6 +157,7 @@ export function registerAgentHandlers(
   )
 
   return {
+    start,
     async writeReview(sessionId, cwd, owner, message) {
       const session = live.get(sessionId)
       const saved = row(sessionId)
