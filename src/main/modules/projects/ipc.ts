@@ -41,12 +41,20 @@ export function registerProjectHandlers(db: DatabaseSync): void {
   const repoOf = (projectId: string) => getProject(db, projectId).path
 
   handle('worktrees:list', ({ projectId }) => listWorktrees(repoOf(projectId)))
-  handle('worktrees:status', async ({ projectId }) => {
+  async function worktreeSnapshot(projectId: string) {
     const worktrees = await listWorktrees(repoOf(projectId))
     return Promise.all(
-      worktrees.map(async ({ path }) => ({ path, status: await gitStatus(path).catch(() => null) })),
+      worktrees.map(async (worktree) => ({
+        ...worktree,
+        status: await gitStatus(worktree.path).catch(() => null),
+      })),
     )
-  })
+  }
+
+  handle('worktrees:snapshot', ({ projectId }) => worktreeSnapshot(projectId))
+  handle('worktrees:status', async ({ projectId }) =>
+    (await worktreeSnapshot(projectId)).map(({ path, status }) => ({ path, status })),
+  )
   handle('worktrees:create', ({ projectId, branch, create }) =>
     createWorktree(repoOf(projectId), projectWorkspaces(), { branch, create }),
   )
