@@ -16,6 +16,7 @@ type Row = Identity & { state: AgentState; updated_at: number }
 type Live = { terminalId: string; owner: WebContents }
 
 export type AgentSessions = {
+  isOpen(id: string): boolean
   activeCount(): number
   onSlotAvailable(listener: () => void): void
   start(request: IpcRequest<'agents:start'>, owner: WebContents): Promise<AgentSession>
@@ -177,6 +178,7 @@ export function registerAgentHandlers(
 
   return {
     start,
+    isOpen: (id) => live.has(id),
     onSlotAvailable: (listener) => void slotListeners.add(listener),
     activeCount: () => [...live.keys()].filter((id) => {
       const state = row(id)?.state
