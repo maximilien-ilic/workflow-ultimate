@@ -22,7 +22,7 @@ export function TaskQueuePanel({
           Agents simultanés
           <input name="limit" type="number" min="1" step="1" defaultValue={queue.limit} required />
         </label>
-        <button type="submit">Enregistrer la limite</button>
+        <button type="submit">Appliquer la limite</button>
       </form>
       {queue.pending.length === 0 ? (
         <p>Aucune tâche en attente.</p>
