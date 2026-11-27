@@ -51,18 +51,28 @@ async function baseBranch(repo: string): Promise<string> {
   throw new Error('Branche de base introuvable (ni origin/HEAD, ni main, ni master)')
 }
 
-// Tout ce qui diffère du point de départ de la branche : commits, changements non commités, nouveaux fichiers.
-export async function changedFiles(
-  repo: string,
-): Promise<{ base: string; mergeBase: string; files: ChangedFile[] }> {
-  const baseRef = await baseBranch(repo)
-  const mergeBase = await runGit(repo, ['merge-base', 'HEAD', baseRef])
+async function diffFiles(repo: string, base: string): Promise<ChangedFile[]> {
+  return parseNameStatus(await runGit(repo, ['diff', '--name-status', '-z', '-M', base, '--']))
+}
+
+// Les fichiers absents du diff de branche peuvent encore contenir un changement local par rapport à HEAD.
+export async function changedFiles(repo: string) {
+  const [baseRef, head] = await Promise.all([baseBranch(repo), runGit(repo, ['rev-parse', 'HEAD'])])
+  const mergeBase = await runGit(repo, ['merge-base', head, baseRef])
   const base = baseRef.replace(/^refs\/(heads|remotes)\//, '')
-  const tracked = parseNameStatus(await runGit(repo, ['diff', '--name-status', '-z', '-M', mergeBase, '--']))
+  const [tracked, working, untrackedRaw] = await Promise.all([
+    diffFiles(repo, mergeBase),
+    head === mergeBase ? Promise.resolve([]) : diffFiles(repo, head),
+    runGit(repo, ['ls-files', '--others', '--exclude-standard', '-z']),
+  ])
   const byPath = new Map(tracked.map((file) => [file.path, file]))
-  const untracked = (await runGit(repo, ['ls-files', '--others', '--exclude-standard', '-z']))
-    .split('\0')
-    .filter(Boolean)
+  const headFiles: string[] = []
+  for (const file of working) {
+    if (byPath.has(file.path)) continue
+    byPath.set(file.path, file)
+    headFiles.push(file.path)
+  }
+  const untracked = untrackedRaw.split('\0').filter(Boolean)
   for (const path of untracked) {
     const trackedFile = byPath.get(path)
     if (!trackedFile || trackedFile.status === 'deleted') {
@@ -70,7 +80,7 @@ export async function changedFiles(
     }
   }
   const files = [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path))
-  return { base, mergeBase, files }
+  return { base, mergeBase, files, head, headFiles }
 }
 
 const MAX_BYTES = 2 * 1024 * 1024
