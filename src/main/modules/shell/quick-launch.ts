@@ -35,7 +35,8 @@ export function finishQuickLaunch(
   parent: BrowserWindow,
   session: QuickAgentStarted,
 ): void {
-  if (!window.isDestroyed()) window.close()
+  // La fermeture n'est plus un abandon une fois l'agent attaché à la fenêtre principale.
+  if (!window.isDestroyed()) window.destroy()
   if (parent.isDestroyed()) return
   const contents = parent.webContents
   const attach = () => contents.send('agents:quickStarted', session)
