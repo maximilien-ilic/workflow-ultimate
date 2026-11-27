@@ -16,6 +16,7 @@ export function worktreeLabel(worktree: WorktreeSummary): string {
 const recentKey = 'wu.workspace-recents'
 const worktreePrefix = 'worktree:'
 const projectPrefix = 'project:'
+const statusIntervalMs = 2_000
 
 function recentWorktree(groups: ProjectGroup[], key = ''): string | undefined {
   if (key.startsWith(worktreePrefix)) return key.slice(worktreePrefix.length)
@@ -64,12 +65,14 @@ export function useWorkspace() {
   }
 
   const revision = useRef(0)
+  const refreshing = useRef(0)
   const invalidate = useCallback(() => {
     revision.current++
   }, [])
 
   const refresh = useCallback(async () => {
     const request = ++revision.current
+    refreshing.current++
     try {
       const projects = await window.wu.invoke('projects:list', {})
       const next = await Promise.all(
@@ -98,6 +101,8 @@ export function useWorkspace() {
       }
     } catch (error) {
       if (request === revision.current) setError(String(error))
+    } finally {
+      refreshing.current--
     }
   }, [])
 
@@ -105,7 +110,9 @@ export function useWorkspace() {
     let timer: ReturnType<typeof setTimeout> | undefined
     const onFocus = () => {
       clearTimeout(timer)
-      timer = setTimeout(() => void refresh(), 200)
+      timer = setTimeout(() => {
+        if (refreshing.current === 0) void refresh()
+      }, 200)
     }
     onFocus()
     window.addEventListener('focus', onFocus)
@@ -121,6 +128,47 @@ export function useWorkspace() {
   )
   const activePath = path ?? recentWorktree(groups, recent[0])
   const selected = targets.find(({ worktree }) => worktree.path === activePath) ?? targets[0]
+  const projectId = selected?.project.id
+  const polling = useRef(false)
+  useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+
+    async function poll(projectId: string) {
+      if (document.hidden || polling.current || refreshing.current > 0) return
+      polling.current = true
+      const request = revision.current
+      try {
+        const statuses = await window.wu.invoke('worktrees:status', { projectId })
+        if (cancelled || request !== revision.current) return
+        const byPath = new Map(statuses.map(({ path, status }) => [path, status]))
+        setGroups((previous) =>
+          previous.map((group) =>
+            group.project.id === projectId
+              ? {
+                  ...group,
+                  worktrees: group.worktrees.map((worktree) => {
+                    const status = byPath.get(worktree.path) ?? null
+                    return { ...worktree, branch: status ? status.branch : worktree.branch, status }
+                  }),
+                }
+              : group,
+          ),
+        )
+      } catch {
+        // Un échec transitoire laisse le dernier état affiché jusqu'au prochain passage.
+      } finally {
+        polling.current = false
+      }
+    }
+
+    const timer = window.setInterval(() => void poll(projectId), statusIntervalMs)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [projectId])
+
   return { groups, selected, select, refresh, error, recent, collapsed, expand }
 }
 
