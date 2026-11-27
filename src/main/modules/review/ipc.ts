@@ -32,7 +32,11 @@ export function registerReviewHandlers(db: DatabaseSync, agents: AgentSessions):
     await comments.send(target, (message) => agents.writeReview(sessionId, target.worktreePath, event.sender, message))
     return comments.list(target)
   })
-  handle('review:changes', async ({ projectId, worktreePath }) =>
+  handle('review:changes', async ({ projectId, worktreePath }) => {
+    const { base, mergeBase, files } = await changedFiles(await checkedWorktree(db, projectId, worktreePath))
+    return { base, mergeBase, files }
+  })
+  handle('review:comparison', async ({ projectId, worktreePath }) =>
     changedFiles(await checkedWorktree(db, projectId, worktreePath)),
   )
   handle('review:commit', async ({ projectId, worktreePath, message, paths }) => {

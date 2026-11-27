@@ -12,6 +12,8 @@ type Target = {
   projectId: string
   worktreePath: string
   mergeBase: string
+  head: string
+  headFiles: string[]
   base: string
   files: ChangedFile[]
 }
@@ -102,7 +104,7 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
     if (request !== opening.current || !modal?.open) return
     setFileMessage('')
     try {
-      const changes = await window.wu.invoke('review:changes', wt)
+      const changes = await window.wu.invoke('review:comparison', wt)
       if (request !== opening.current || !modal.open) return
       setTarget({ ...wt, ...changes, request })
       setSelected(0)
@@ -169,6 +171,7 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
 
   // Affiche le fichier sélectionné (Monaco chargé à la première ouverture seulement).
   const file = target?.files[selected]
+  const compareHead = Boolean(file && target?.headFiles.includes(file.path))
   useLayoutEffect(() => {
     inlineRef.current = inline
     editor.current?.updateOptions({ renderSideBySide: !inline })
@@ -187,7 +190,7 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
         window.wu.invoke('review:file', {
           projectId: target.projectId,
           worktreePath: target.worktreePath,
-          mergeBase: target.mergeBase,
+          mergeBase: compareHead ? target.head : target.mergeBase,
           file,
         }),
       ])
@@ -212,7 +215,7 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
       cursorListener?.dispose()
       if (editor.current) clearVersions(editor.current)
     }
-  }, [target, file])
+  }, [target, file, compareHead])
 
   useLayoutEffect(() => () => {
     if (editor.current) {
@@ -252,7 +255,7 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
       }}
     >
       <header>
-        <h2>Diff {target ? `par rapport à ${target.base}` : ''}</h2>
+        <h2>Diff {target ? `par rapport à ${compareHead ? 'HEAD' : target.base}` : ''}</h2>
         <button onClick={() => setInline((v) => !v)}>{inline ? 'Côte à côte' : 'En ligne'}</button>
         <button onClick={() => dialog.current?.close()}>Fermer</button>
       </header>

@@ -107,6 +107,7 @@ export const ipcRequestSchemas = {
   'agents:list': z.object({}).strict(),
   // Diff d'un worktree par rapport au point de départ de sa branche.
   'review:changes': z.object({ projectId: z.uuid(), worktreePath: absolutePath }).strict(),
+  'review:comparison': z.object({ projectId: z.uuid(), worktreePath: absolutePath }).strict(),
   // Indexe les fichiers choisis (tous si `paths` est absent), commite, puis pousse à part.
   'review:commit': z
     .object({
@@ -258,6 +259,7 @@ interface IpcResponses {
   'agents:resume': AgentSession
   'agents:list': AgentSession[]
   'review:changes': { base: string; mergeBase: string; files: ChangedFile[] }
+  'review:comparison': { base: string; mergeBase: string; files: ChangedFile[]; head: string; headFiles: string[] }
   'review:file': { binary: boolean; before: string; after: string }
   'review:commit': { sha: string }
   'review:push': { output: string }

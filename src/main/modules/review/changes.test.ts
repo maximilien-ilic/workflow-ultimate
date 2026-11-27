@@ -59,6 +59,27 @@ describe('changedFiles', () => {
   })
 })
 
+it('liste un retour local à la base et le compare à HEAD sans masquer les autres commits', async () => {
+  writeFileSync(join(repo, 'modif.txt'), 'version commitée\n')
+  writeFileSync(join(repo, 'garde.txt'), 'autre changement commité\n')
+  commit(repo, 'modifications de branche')
+  writeFileSync(join(repo, 'modif.txt'), 'avant\n')
+
+  const changes = await changedFiles(repo)
+  expect(changes.files).toEqual([
+    { status: 'modified', path: 'garde.txt' },
+    { status: 'modified', path: 'modif.txt' },
+  ])
+  const { head, headFiles, mergeBase } = changes
+  expect(headFiles).toEqual(['modif.txt'])
+  expect(await fileVersions(repo, head, changes.files[1]!)).toEqual({
+    binary: false, before: 'version commitée\n', after: 'avant\n',
+  })
+  expect(await fileVersions(repo, mergeBase, changes.files[0]!)).toEqual({
+    binary: false, before: 'inchangé\n', after: 'autre changement commité\n',
+  })
+})
+
 describe('changedFiles, cas limites', () => {
   it("compare à origin/<branche> quand la branche de base n'existe qu'à distance", async () => {
     const clone = join(dir, 'clone')
