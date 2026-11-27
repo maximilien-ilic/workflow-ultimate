@@ -52,6 +52,7 @@ export const ipcRequestSchemas = {
   'projects:list': z.object({}).strict(),
   'projects:add': z.object({ path: absolutePath }).strict(),
   'projects:remove': z.object({ id: z.uuid() }).strict(),
+  'projects:removeChecked': z.object({ id: z.uuid(), confirmedTaskCount: z.number().int().nonnegative().optional() }).strict(),
   // Ouvre le sélecteur de dossier du système : `repo` ajoute un dépôt, `scan` ajoute tous ceux trouvés dedans.
   'projects:pick': z.object({ mode: z.enum(['repo', 'scan']) }).strict(),
   'projects:orcaPreview': z.object({ manual: z.boolean() }).strict(),
@@ -235,6 +236,7 @@ interface IpcResponses {
   'projects:list': Project[]
   'projects:add': Project
   'projects:remove': null
+  'projects:removeChecked': { removed: boolean; taskCount: number }
   'projects:pick': PickResult
   'projects:orcaPreview': OrcaImport | null
   'projects:orcaImport': PickResult & { activeWorktree: string | null }
