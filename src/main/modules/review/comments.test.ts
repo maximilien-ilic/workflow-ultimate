@@ -38,6 +38,11 @@ it('conserve les commentaires par worktree et marque uniquement le lot effective
 it('garde les commentaires en attente quand le PTY refuse l’écriture', async () => {
   const comments = createReviewComments(db)
   comments.add(target, { path: 'a', line: 1, body: 'Question' })
-  await expect(comments.send(target, async () => { throw new Error('PTY fermé') })).rejects.toThrow('PTY fermé')
+  let failWrite!: (error: Error) => void
+  const write = new Promise<void>((_, reject) => { failWrite = reject })
+  const sending = comments.send(target, () => write)
+  expect(comments.list(target)[0]?.sentAt).toBeNull()
+  failWrite(new Error('PTY fermé'))
+  await expect(sending).rejects.toThrow('PTY fermé')
   expect(comments.list(target)[0]?.sentAt).toBeNull()
 })

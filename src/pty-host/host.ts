@@ -1,10 +1,18 @@
-import { statSync } from 'node:fs'
+import { statSync, writeSync } from 'node:fs'
+import { ReadStream } from 'node:tty'
 import { spawn, type IPty } from 'node-pty'
-import type { HostEvent, HostRequest } from '../shared/pty-protocol'
+import { CONFIRMED_WRITE_TIMEOUT_MS, type HostEvent, type HostRequest } from '../shared/pty-protocol'
 import { RingBuffer } from './ring-buffer'
+
+type WriteRequest = Extract<HostRequest, { type: 'write' }>
+type PendingWrite = { request: WriteRequest; data: Buffer; offset: number; deadline?: number }
 
 type Terminal = {
   pty: IPty
+  fd: number
+  socket: ReadStream
+  writes: PendingWrite[]
+  writeTimer?: ReturnType<typeof setTimeout>
   buffer: RingBuffer
   exited: boolean
   closing: boolean
@@ -13,6 +21,7 @@ type Terminal = {
 }
 
 const TERMINATION_GRACE_MS = 500
+const WRITE_RETRY_MS = 5
 
 const isDirectory = (path: string) => statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false
 
@@ -30,6 +39,42 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
       ...(req.type === 'write' && req.receipt ? { receipt: req.receipt } : {}),
     })
 
+  function failWrites(term: Terminal, message: string): void {
+    clearTimeout(term.writeTimer)
+    term.writeTimer = undefined
+    for (const { request } of term.writes.splice(0)) error(request, message)
+  }
+
+  function scheduleWrite(term: Terminal, delay = 0): void {
+    term.writeTimer ??= setTimeout(() => {
+      term.writeTimer = undefined
+      const write = term.writes[0]
+      if (!write) return
+      if (term.socket.destroyed) return failWrites(term, 'Le PTY est fermé.')
+      if (write.deadline !== undefined && performance.now() >= write.deadline)
+        return failWrites(term, 'Délai d’écriture dans le PTY dépassé.')
+
+      try {
+        if (write.offset < write.data.length) {
+          // Le master Linux est non bloquant. L’appel synchrone évite qu’une écriture déléguée
+          // s’exécute après la fermeture du descripteur par le flux.
+          write.offset += writeSync(term.fd, write.data, write.offset, write.data.length - write.offset)
+        }
+      } catch (cause) {
+        const code = (cause as NodeJS.ErrnoException).code
+        if (code === 'EAGAIN' || code === 'EINTR') return scheduleWrite(term, WRITE_RETRY_MS)
+        return failWrites(term, `Écriture PTY impossible : ${String(cause)}`)
+      }
+
+      if (write.offset === write.data.length) {
+        term.writes.shift()
+        const { id, receipt } = write.request
+        if (receipt) send({ type: 'written', id, receipt })
+      }
+      if (term.writes.length > 0) scheduleWrite(term)
+    }, delay)
+  }
+
   function spawnTerminal(req: Extract<HostRequest, { type: 'spawn' }>): void {
     if (terminals.has(req.id)) return error(req, `Terminal « ${req.id} » déjà ouvert`)
     if (!isDirectory(req.cwd)) return error(req, `Dossier introuvable : ${req.cwd}`)
@@ -45,14 +90,26 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
     } catch (e) {
       return error(req, `Lancement impossible de ${req.file} : ${(e as Error).message}`)
     }
+    // shortcut: node-pty 1.1 n’expose pas de reçu d’écriture ; utiliser son master Unix
+    // tant que son API publique ne permet pas de confirmer la fin d’un lot.
+    const fd = 'fd' in pty ? pty.fd : undefined
+    const socket = '_socket' in pty ? pty._socket : undefined
+    if (typeof fd !== 'number' || !(socket instanceof ReadStream)) {
+      pty.kill()
+      return error(req, 'Descripteur d’écriture du PTY indisponible.')
+    }
     const term: Terminal = {
       pty,
+      fd,
+      socket,
+      writes: [],
       buffer: new RingBuffer(bufferSize),
       exited: false,
       closing: false,
       total: 0,
     }
     terminals.set(req.id, term)
+    socket.once('close', () => failWrites(term, 'Le PTY a fermé pendant l’écriture.'))
     pty.onData((data) => {
       term.buffer.push(data)
       term.total += data.length
@@ -75,6 +132,7 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
     }
     if (terminal.exited) return close(request.id)
     terminal.closing = true
+    failWrites(terminal, 'Le PTY ferme pendant l’écriture.')
     if (request.expiredSpawn && !terminal.killTimer) {
       // Personne ne peut fermer ce PTY à la main s'il survit au premier signal.
       terminal.killTimer = setTimeout(() => {
@@ -114,8 +172,10 @@ export function createHost(send: (event: HostEvent) => void, bufferSize = 1_000_
       case 'resize':
         if (term.exited) return error(req, `Terminal « ${req.id} » déjà terminé`)
         if (req.type === 'write') {
-          term.pty.write(req.data)
-          if (req.receipt) send({ type: 'written', id: req.id, receipt: req.receipt })
+          if (term.closing) return error(req, 'Le PTY est en cours de fermeture.')
+          const deadline = req.receipt ? performance.now() + CONFIRMED_WRITE_TIMEOUT_MS : undefined
+          term.writes.push({ request: req, data: Buffer.from(req.data), offset: 0, deadline })
+          scheduleWrite(term)
         } else term.pty.resize(req.cols, req.rows)
     }
   }

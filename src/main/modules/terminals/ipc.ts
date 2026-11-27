@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
-import type { HostEvent } from '../../../shared/pty-protocol'
+import { CONFIRMED_WRITE_TIMEOUT_MS, type HostEvent } from '../../../shared/pty-protocol'
 import type { TerminalEvent } from '../../../shared/ipc'
 import { redirectsGitRepository } from '../projects/git-env'
 import { handle } from '../shell/ipc'
@@ -115,7 +115,8 @@ export function registerTerminalHandlers(host: PtyHost) {
   function writeConfirmed(id: string, owner: WebContents, data: string): Promise<void> {
     owned(id, owner)
     const receipt = randomUUID()
-    const written = writes.wait(receipt, 5000)
+    // Laisser au host le temps de renvoyer son erreur d’écriture avant le délai de transport.
+    const written = writes.wait(receipt, CONFIRMED_WRITE_TIMEOUT_MS + 1_000)
     try {
       host.send({ type: 'write', id, data, receipt })
     } catch (cause) {
