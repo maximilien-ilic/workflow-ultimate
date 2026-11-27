@@ -129,18 +129,17 @@ export function useWorkspace() {
       polling.current = true
       const request = revision.current
       try {
-        const statuses = await window.wu.invoke('worktrees:status', { projectId })
+        const worktrees = await window.wu.invoke('worktrees:snapshot', { projectId })
         if (cancelled || request !== revision.current) return
-        const byPath = new Map(statuses.map(({ path, status }) => [path, status]))
         setGroups((previous) =>
           previous.map((group) =>
             group.project.id === projectId
               ? {
                   ...group,
-                  worktrees: group.worktrees.map((worktree) => {
-                    const status = byPath.get(worktree.path) ?? null
-                    return { ...worktree, branch: status ? status.branch : worktree.branch, status }
-                  }),
+                  worktrees: worktrees.map((worktree) => ({
+                    ...worktree,
+                    branch: worktree.status ? worktree.status.branch : worktree.branch,
+                  })),
                 }
               : group,
           ),
