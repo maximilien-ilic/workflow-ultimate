@@ -6,6 +6,7 @@ type Notify = (projectId?: string, error?: string) => void
 export function createTaskQueue(hasSlot: () => boolean, notify: Notify) {
   // shortcut: la file vit dans le processus principal ; la persister si elle doit survivre à un redémarrage.
   const pending: Entry[] = []
+  const failures = new Map<number, { projectId: string; message: string }>()
   let starting: Entry | undefined
   let draining: Promise<void> | undefined
 
@@ -32,9 +33,10 @@ export function createTaskQueue(hasSlot: () => boolean, notify: Notify) {
     const entry = pending.shift()!
     starting = entry
     notify()
-    const { projectId, title } = entry.task
+    const { id, projectId, title } = entry.task
     try {
       if (await entry.launch(hasSlot)) {
+        failures.delete(id)
         notify(projectId)
         return true
       }
@@ -42,7 +44,9 @@ export function createTaskQueue(hasSlot: () => boolean, notify: Notify) {
       notify()
       return false
     } catch (error) {
-      notify(projectId, `${title} : ${(error as Error).message}`)
+      const message = `${title} : ${(error as Error).message}`
+      failures.set(id, { projectId, message })
+      notify(projectId, message)
       return true
     } finally {
       starting = undefined
@@ -58,6 +62,9 @@ export function createTaskQueue(hasSlot: () => boolean, notify: Notify) {
     enqueue,
     move,
     list: () => pending.map(({ task }) => task),
+    failures: (projectId: string) => [...failures].flatMap(([id, failure]) =>
+      failure.projectId === projectId ? [{ id, message: failure.message }] : [],
+    ),
     drain: () =>
       (draining ??= drainUntilFull().finally(() => {
         draining = undefined

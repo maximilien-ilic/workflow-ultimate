@@ -54,6 +54,7 @@ export const ipcRequestSchemas = {
   'projects:list': z.object({}).strict(),
   'projects:add': z.object({ path: absolutePath }).strict(),
   'projects:remove': z.object({ id: z.uuid() }).strict(),
+  'projects:removeChecked': z.object({ id: z.uuid(), confirmedTaskCount: z.number().int().nonnegative().optional() }).strict(),
   // Ouvre le sélecteur de dossier du système : `repo` ajoute un dépôt, `scan` ajoute tous ceux trouvés dedans.
   'projects:pick': z.object({ mode: z.enum(['repo', 'scan']) }).strict(),
   'projects:orcaPreview': z.object({ manual: z.boolean() }).strict(),
@@ -92,6 +93,7 @@ export const ipcRequestSchemas = {
   'terminal:saveHistory': terminalScreenSchema.extend({ id: z.uuid() }),
   'terminal:historyFlushed': z.object({}).strict(),
   // Lien cliqué dans un terminal : ouvert dans le navigateur du système, http(s) seulement.
+  'shell:kdePalette': z.object({}).strict(),
   'shell:openUrl': z.object({ url: z.url({ protocol: /^https?$/ }).max(4096) }).strict(),
   // Lance l'agent dans un nouveau terminal `terminalId` (le renderer s'y rattache ensuite).
   'agents:start': z
@@ -153,6 +155,7 @@ export const ipcRequestSchemas = {
     })
     .strict(),
   'tasks:queue': z.strictObject({}),
+  'tasks:dispatchFailures': z.object({ projectId: z.uuid() }).strict(),
   'tasks:reorderQueue': z.strictObject({ id: taskId, direction: z.union([z.literal(-1), z.literal(1)]) }),
   'settings:setAgentConcurrency': z.strictObject({ max: agentConcurrency }),
   'tasks:dispatch': z.strictObject({ projectId: z.uuid(), id: taskId, agent: agentKind }),
@@ -194,6 +197,13 @@ export type PullRequestContext =
 export type AppInfo = { name: string; version: string; electron: string; node: string }
 export type Project = { id: string; path: string; name: string; addedAt: number }
 // Résultat d'un ajout par sélecteur : projets ajoutés et chemins refusés (avec la raison).
+export type KdePalette = {
+  background?: string
+  foreground?: string
+  accent?: string
+  scheme?: 'light' | 'dark'
+}
+
 export type Worktree = { path: string; branch: string | null; main: boolean }
 export type GitStatus = {
   branch: string | null
@@ -240,6 +250,7 @@ interface IpcResponses {
   'projects:list': Project[]
   'projects:add': Project
   'projects:remove': null
+  'projects:removeChecked': { removed: boolean; taskCount: number }
   'projects:pick': PickResult
   'projects:orcaPreview': OrcaImport | null
   'projects:orcaImport': PickResult & { activeWorktree: string | null }
@@ -261,6 +272,7 @@ interface IpcResponses {
   'terminal:loadHistory': TerminalHistory | null
   'terminal:saveHistory': null
   'terminal:historyFlushed': null
+  'shell:kdePalette': KdePalette
   'shell:openUrl': null
   'agents:start': AgentSession
   'agents:resume': AgentSession
@@ -276,6 +288,7 @@ interface IpcResponses {
   'review:sendComments': ReviewComment[]
   'review:createPr': { url: string }
   'tasks:queue': TaskQueue
+  'tasks:dispatchFailures': { id: number; message: string }[]
   'tasks:reorderQueue': TaskQueue
   'settings:setAgentConcurrency': TaskQueue
   'tasks:dispatch': Task[]

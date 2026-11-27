@@ -33,9 +33,18 @@ export function registerProjectHandlers(db: DatabaseSync): void {
   registerOrcaImport(db)
   handle('projects:list', () => listProjects(db))
   handle('projects:add', ({ path }) => addProject(db, path))
+  const taskCount = db.prepare('SELECT COUNT(*) AS total FROM tasks WHERE project_id = ?')
+  const countTasks = (id: string) => Number(taskCount.get(id)?.total)
   handle('projects:remove', ({ id }) => {
+    if (countTasks(id) > 0) throw new Error('Il faut confirmer la suppression des tâches de ce projet.')
     removeProject(db, id)
     return null
+  })
+  handle('projects:removeChecked', ({ id, confirmedTaskCount }) => {
+    const taskCount = countTasks(id)
+    if (taskCount > 0 && taskCount !== confirmedTaskCount) return { removed: false, taskCount }
+    removeProject(db, id)
+    return { removed: true, taskCount }
   })
   // Le renderer donne un id de projet, jamais un chemin de dépôt : le main le retrouve lui-même.
   const repoOf = (projectId: string) => getProject(db, projectId).path

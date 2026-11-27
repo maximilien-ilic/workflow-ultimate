@@ -2,11 +2,14 @@ import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { migrate } from '../shell/db'
 import { migrations } from '../shell/migrations'
-import { readBranchPullRequest } from '../review/pull-request'
+import { readBranchPullRequest, resolveBranchPullRequestRepository } from '../review/pull-request'
 import { createTaskTransitions } from './task-transitions'
 
-vi.mock('../projects/registry', () => ({ checkedProjectPath: async () => '/projet' }))
-vi.mock('../review/pull-request', () => ({ readBranchPullRequest: vi.fn() }))
+vi.mock('../projects/registry', () => ({ checkedProjectPath: async (_db: unknown, id: string) => id === 'p' ? '/projet' : '/autre' }))
+vi.mock('../review/pull-request', () => ({
+  readBranchPullRequest: vi.fn(),
+  resolveBranchPullRequestRepository: vi.fn(),
+}))
 
 let db: DatabaseSync
 const notify = vi.fn()
@@ -16,6 +19,7 @@ const status = () => db.prepare('SELECT status FROM tasks WHERE id = 1').get()?.
 
 beforeEach(() => {
   vi.resetAllMocks()
+  vi.mocked(resolveBranchPullRequestRepository).mockResolvedValue('example/projet')
   db = new DatabaseSync(':memory:')
   migrate(db, migrations)
   db.exec(
@@ -38,7 +42,7 @@ it('attend la fin, passe en revue à l’ouverture de la PR, puis finit à sa fu
 
   db.exec("UPDATE agent_sessions SET state = 'done'")
   await transitions.refresh()
-  expect(readBranchPullRequest).toHaveBeenCalledWith('/projet', branch, startedAt)
+  expect(readBranchPullRequest).toHaveBeenCalledWith('/projet', branch, startedAt, 'example/projet')
   expect(status()).toBe('doing')
 
   vi.mocked(readBranchPullRequest).mockResolvedValue('OPEN')
@@ -85,4 +89,33 @@ it('écarte un résultat reçu après la reprise de l’agent ou la fermeture de
   await transitions.refresh()
   expect(status()).toBe('doing')
   expect(notify).not.toHaveBeenCalled()
+})
+
+
+it('permet à un autre projet d’avancer alors qu’une lecture reste bloquée', async () => {
+  db.exec(`
+    UPDATE agent_sessions SET state = 'done';
+    INSERT INTO projects (id, path, git_dir, name, added_at) VALUES ('a', '/autre', '/autre/.git', 'autre', 0);
+    INSERT INTO tasks (id, project_id, title, body, status, agent_session_id, agent_branch) VALUES
+      (2, 'p', 'Deuxième tâche du projet lent', '', 'doing', 's', 'feat/lente'),
+      (3, 'a', 'Tâche indépendante', '', 'doing', 's', 'feat/independante');
+  `)
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => { release = resolve })
+  vi.mocked(readBranchPullRequest).mockImplementation(async (repo, head) => {
+    if (repo === '/projet' && head === branch) await blocked
+    return 'OPEN'
+  })
+  const cycle = createTaskTransitions(db, notify).refresh()
+  try {
+    await vi.waitFor(() => {
+      expect(db.prepare('SELECT status FROM tasks WHERE id = 3').get()?.status).toBe('review')
+    }, { timeout: 500 })
+    expect(status()).toBe('doing')
+  } finally {
+    release()
+    await cycle
+  }
+  expect(status()).toBe('review')
+  expect(vi.mocked(resolveBranchPullRequestRepository).mock.calls.flat().sort()).toEqual(['/autre', '/projet'])
 })
