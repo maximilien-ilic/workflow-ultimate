@@ -32,7 +32,9 @@ export const settingsSchema = z.strictObject({
   orcaImport: orcaImport.optional(),
 })
 export type Settings = z.output<typeof settingsSchema>
-export type StoredSettings = Settings & { notificationSound?: boolean }
+export const DEFAULT_AGENT_CONCURRENCY = 3
+export const agentConcurrency = z.int().positive()
+export type StoredSettings = Settings & { notificationSound?: boolean; maxConcurrentAgents?: number }
 
 function storedPanel(defaults: Settings['layout']['left']) {
   return z
@@ -51,6 +53,7 @@ const storedSettings = z
     keybindings: keybindings.catch({}).default({}),
     orcaImport: orcaImport.optional().catch(undefined),
     notificationSound: z.boolean().optional().catch(undefined),
+    maxConcurrentAgents: agentConcurrency.optional().catch(undefined),
   })
   .catch(defaultSettings)
 

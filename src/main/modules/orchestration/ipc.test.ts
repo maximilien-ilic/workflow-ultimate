@@ -23,6 +23,7 @@ const { registerTaskHandlers } = await import('./ipc')
 
 const projectId = randomUUID()
 let db: DatabaseSync
+let tasks: ReturnType<typeof registerTaskHandlers>
 const invoke = (channel: IpcChannel, raw: unknown) => handlers.get(channel)!({} as IpcMainInvokeEvent, raw)
 
 beforeEach(() => {
@@ -31,9 +32,9 @@ beforeEach(() => {
   db.prepare('INSERT INTO projects (id, path, git_dir, name, added_at) VALUES (?, ?, ?, ?, ?)').run(
     projectId, '/repo', '/repo/.git', 'repo', 0,
   )
-  registerTaskHandlers(db)
+  tasks = registerTaskHandlers(db, { start: vi.fn(), activeCount: () => 0, onSlotAvailable: vi.fn() })
 })
-afterEach(() => db.close())
+afterEach(() => { tasks.close(); db.close() })
 
 it('crée, édite puis déplace une tâche du projet', async () => {
   const [created] = (await invoke('tasks:create', { projectId, title: ' Tâche ', body: '' })) as { id: number }[]
@@ -48,6 +49,8 @@ it.each([
   ['un titre vide', 'tasks:create', { projectId, title: '  ', body: '' }],
   ['une colonne inconnue', 'tasks:move', { projectId, id: 1, status: 'archived' }],
   ['un projet qui n’est pas un uuid', 'tasks:list', { projectId: 'x' }],
+  ['une limite nulle', 'settings:setAgentConcurrency', { max: 0 }],
+  ['un agent inconnu', 'tasks:dispatch', { projectId, id: 1, agent: 'inconnu' }],
   ['un import sans projet valide', 'tasks:importIssues', { projectId: 'x' }],
 ] as const)('rejette %s', async (_label, channel, raw) => {
   await expect(invoke(channel, raw)).rejects.toThrow(/Requête IPC invalide/)

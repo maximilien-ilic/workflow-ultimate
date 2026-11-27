@@ -10,6 +10,7 @@ const GH_TIMEOUT_MS = 15_000
 export const GH_MAX_OUTPUT_BYTES = 16 * 1024 * 1024
 const MAX_BUFFER_EXCEEDED = 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
 const PUSH_REQUIRED = 'Poussez le commit courant vers GitHub avant de créer sa pull request.'
+const PR_HISTORY_LIMIT = 100
 const HEAD_REF_PREFIX = 'refs/heads/'
 const pullRequestUrl = z.string().regex(/^https:\/\/github\.com\/[a-z\d_.-]+\/[a-z\d_.-]+\/pull\/\d+$/i)
 const pullRequest = z.object({
@@ -19,6 +20,7 @@ const pullRequest = z.object({
   state: z.enum(['OPEN', 'CLOSED', 'MERGED']),
   headRepository: z.object({ nameWithOwner: z.string() }).nullish(),
 })
+const trackedPullRequest = pullRequest.extend({ mergedAt: z.iso.datetime().nullish() })
 const checks = z.array(z.object({ name: z.string(), bucket: z.enum(['pass', 'fail', 'pending', 'skipping', 'cancel']) }))
 
 export async function gh(repo: string, args: string[]) {
@@ -75,6 +77,32 @@ async function pullRequestTarget(repo: string, branch: string) {
   return { repository, head: ref.slice(HEAD_REF_PREFIX.length) }
 }
 
+type PullRequestTarget = Awaited<ReturnType<typeof pullRequestTarget>>
+
+async function listBranchPullRequests(repo: string, { repository, head }: PullRequestTarget, args: string[]) {
+  const result = await gh(repo, ['pr', 'list', `--repo=github.com/${repository}`, `--head=${head}`, ...args])
+  if (result.code !== 0) throw new Error(result.error)
+  return JSON.parse(result.stdout) as unknown
+}
+
+function sameRepository(pr: z.infer<typeof pullRequest>, repository: string): boolean {
+  return pr.headRepository?.nameWithOwner.toLowerCase() === repository.toLowerCase()
+}
+
+export async function readBranchPullRequest(repo: string, branch: string, startedAt: number): Promise<'OPEN' | 'MERGED' | undefined> {
+  if (!(await runGit(repo, ['remote']))) return
+  const target = await pullRequestTarget(repo, branch)
+  // shortcut: les 100 dernières PR de cette branche suffisent ; paginer si une branche est réutilisée davantage.
+  const result = await listBranchPullRequests(repo, target, [
+    '--state=all', `--limit=${PR_HISTORY_LIMIT}`, '--json', 'number,title,url,state,headRepository,mergedAt',
+  ])
+  const matching = trackedPullRequest.array().parse(result).filter((pr) => sameRepository(pr, target.repository))
+  if (matching.some(({ state }) => state === 'OPEN')) return 'OPEN'
+  // Une fusion antérieure au démarrage peut concerner une ancienne utilisation de la branche.
+  if (matching.some(({ state, mergedAt }) => state === 'MERGED' && mergedAt && Date.parse(mergedAt) >= startedAt))
+    return 'MERGED'
+}
+
 async function draftFor(repo: string, branch: string): Promise<PullRequestContext> {
   const [title = branch, ...parts] = (await runGit(repo, ['log', '-1', '--no-merges', '--format=%s%x00%b'])).split('\0')
   const body = parts.join('\0').trim()
@@ -91,15 +119,9 @@ export async function readPullRequest(repo: string): Promise<PullRequestContext>
   const [branch, remotes] = await Promise.all([currentBranch(repo), runGit(repo, ['remote'])])
   if (!branch) return { kind: 'unavailable', message: 'Sélectionnez un worktree rattaché à une branche.' }
   if (!remotes) return { kind: 'unavailable', message: 'Aucun dépôt distant configuré.' }
-  const { repository, head } = await pullRequestTarget(repo, branch)
-  const result = await gh(repo, [
-    'pr', 'list', `--repo=github.com/${repository}`, `--head=${head}`, '--state=open',
-    '--json', 'number,title,url,state,headRepository',
-  ])
-  if (result.code !== 0) throw new Error(result.error)
-  const pr = pullRequest.array().parse(JSON.parse(result.stdout)).find(({ headRepository, state }) =>
-    state === 'OPEN' && headRepository?.nameWithOwner.toLowerCase() === repository.toLowerCase(),
-  )
+  const target = await pullRequestTarget(repo, branch)
+  const result = await listBranchPullRequests(repo, target, ['--state=open', '--json', 'number,title,url,state,headRepository'])
+  const pr = pullRequest.array().parse(result).find((pr) => pr.state === 'OPEN' && sameRepository(pr, target.repository))
   if (!pr) return draftFor(repo, branch)
   const { number, title, url, state } = pr
   return { kind: 'existing', number, title, url, state, checks: await readChecks(repo, url) }

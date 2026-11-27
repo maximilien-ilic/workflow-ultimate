@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createPullRequest, gh, GH_MAX_OUTPUT_BYTES, readPullRequest } from './pull-request'
+import { createPullRequest, gh, GH_MAX_OUTPUT_BYTES, readBranchPullRequest, readPullRequest } from './pull-request'
 
 let repo: string
 let publishedSha: string
@@ -141,4 +141,26 @@ it('signale clairement une sortie de gh au-delà de la limite', async () => {
   await expect(gh(repo, ['issue', 'list'])).resolves.toMatchObject({
     error: `La sortie de gh dépasse la limite de ${GH_MAX_OUTPUT_BYTES} octets.`,
   })
+})
+
+
+it('lit une PR ouverte sur la branche mémorisée même depuis un autre worktree', async () => {
+  git('branch', 'feat/123-tableau')
+  fakeGh(`
+    [ "$1 $2 $3 $4 $5" = "pr list --repo=github.com/example/projet --head=feat/123-tableau --state=all" ] || exit 9
+    echo '[{"number":11,"title":"Tableau","url":"https://github.com/example/projet/pull/11","state":"OPEN","headRepository":{"nameWithOwner":"example/projet"},"mergedAt":null}]'
+  `)
+  await expect(readBranchPullRequest(repo, 'feat/123-tableau', Date.now())).resolves.toBe('OPEN')
+})
+
+it('écarte les forks et les anciennes fusions lors d’une réutilisation de branche', async () => {
+  fakeGh(`
+    echo '[
+      {"number":12,"title":"Fork","url":"https://github.com/example/projet/pull/12","state":"MERGED","headRepository":{"nameWithOwner":"autre/projet"},"mergedAt":"2026-11-26T12:00:00Z"},
+      {"number":11,"title":"Ancienne","url":"https://github.com/example/projet/pull/11","state":"MERGED","headRepository":{"nameWithOwner":"example/projet"},"mergedAt":"2026-11-25T12:00:00Z"}
+    ]'
+  `)
+  const branch = 'feat/42-contexte'
+  await expect(readBranchPullRequest(repo, branch, Date.parse('2026-11-26T08:00:00Z'))).resolves.toBeUndefined()
+  await expect(readBranchPullRequest(repo, branch, Date.parse('2026-11-25T08:00:00Z'))).resolves.toBe('MERGED')
 })

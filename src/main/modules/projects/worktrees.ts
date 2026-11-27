@@ -1,9 +1,30 @@
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { mkdir, realpath } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Worktree } from '../../../shared/ipc'
-import { runGit } from './git-env'
+import { remoteGitEnv, runGit } from './git-env'
+
+const exec = promisify(execFile)
+const ISSUE_LOOKUP_TIMEOUT_MS = 15_000
+
+export async function issueBranch(repo: string, issue: number, source?: string): Promise<string> {
+  const args = ['issue', 'view', String(issue), '--json', 'title', '-q', '.title']
+  const env = source ? remoteGitEnv() : undefined
+  if (env && source) {
+    delete env.GH_HOST
+    delete env.GH_REPO
+    args.push(`--repo=github.com/${source}`)
+  }
+  try {
+    const { stdout } = await exec('gh', args, { cwd: repo, env, timeout: ISSUE_LOOKUP_TIMEOUT_MS })
+    return branchForIssue(issue, stdout.trim())
+  } catch (error) {
+    throw new Error(`Ticket #${issue} introuvable avec gh : ${(error as Error).message}`, { cause: error })
+  }
+}
 
 // Repli tant qu'aucun dossier de workspaces n'a été importé.
 export const defaultWorkspaces = () => join(homedir(), 'workflow-ultimate', 'workspaces')
@@ -58,7 +79,7 @@ export async function listWorktrees(repo: string): Promise<Worktree[]> {
 export async function createWorktree(
   repo: string,
   workspaces: string,
-  opts: { branch: string; create: boolean; base?: string },
+  opts: { branch: string; create?: boolean; base?: string },
 ): Promise<string> {
   try {
     await runGit(repo, ['check-ref-format', '--branch', opts.branch])
@@ -71,7 +92,8 @@ export async function createWorktree(
   // ce qui permet à removeWorktree de refuser tout chemin redirigé.
   const path = join(await realpath(dirname(wanted)), basename(wanted))
   if (existsSync(path)) throw new Error(`${path} existe déjà`)
-  const args = opts.create
+  const create = opts.create ?? !(await branchExists(repo, opts.branch))
+  const args = create
     ? ['worktree', 'add', '-b', opts.branch, path, ...(opts.base ? [opts.base] : [])]
     : ['worktree', 'add', path, opts.branch]
   try {

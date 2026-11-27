@@ -103,6 +103,13 @@ export const agentStore = {
   },
 }
 
+window.wu.onTaskAgentStarted(({ session, terminalId, branch }) => {
+  const name = session.agent === 'claude-code' ? 'Claude' : 'Codex'
+  const title = `${name} · ${branch}`
+  agentStore.started(terminalId, { sessionId: session.id, agent: session.agent, title }, session.state)
+  terminalStore.openAttachedTab(session.cwd, title, terminalId)
+})
+
 export function attachQuickAgent(session: QuickAgentStarted) {
   const agentName = session.agent === 'claude-code' ? 'Claude' : 'Codex'
   const title = `${agentName} · ${session.cwd.split('/').at(-1)}`
