@@ -90,8 +90,13 @@ const GIT_SHOW_TIMEOUT_MS = 10_000
 // Marqueur « trop gros » : un tampon dépassant la limite est traité comme un binaire.
 const TOO_LARGE = Buffer.alloc(MAX_BYTES + 1)
 
+const subprojectCommit = (sha: string) => Buffer.from(`Subproject commit ${sha}\n`)
+
 // Version au point de départ de la branche ; TOO_LARGE si elle dépasse la limite.
 async function readBefore(repo: string, mergeBase: string, path: string): Promise<Buffer> {
+  const entry = await runGit(repo, ['--literal-pathspecs', 'ls-tree', '-z', mergeBase, '--', path])
+  const gitlink = /^160000 commit ([a-f0-9]+)\t/.exec(entry)?.[1]
+  if (gitlink) return subprojectCommit(gitlink)
   try {
     const { stdout } = await exec('git', ['-C', repo, 'show', `${mergeBase}:${path}`], {
       encoding: 'buffer',
@@ -104,6 +109,20 @@ async function readBefore(repo: string, mergeBase: string, path: string): Promis
     if ((error as { code?: string }).code !== 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') throw error
     return TOO_LARGE
   }
+}
+
+async function readSubmodule(repo: string, path: string): Promise<Buffer> {
+  const entry = await runGit(repo, ['--literal-pathspecs', 'ls-files', '--stage', '-z', '--', path])
+  const indexed = /^160000 ([a-f0-9]+) 0\t/.exec(entry)?.[1]
+  if (!indexed) return TOO_LARGE
+
+  // Git compare le commit extrait au gitlink indexé, même si le contenu du sous-module est sale.
+  const diff = await runGit(repo, [
+    '--literal-pathspecs', 'diff', '--submodule=short', '--ignore-submodules=dirty',
+    '--no-ext-diff', '--no-textconv', '--no-color', '--output-indicator-new=+', '--', path,
+  ])
+  const checkedOut = /^\+Subproject commit ([a-f0-9]+)$/m.exec(diff)?.[1]
+  return subprojectCommit(checkedOut ?? indexed)
 }
 
 // Version du dossier de travail. Un lien symbolique est versionné comme sa cible : on montre la cible,
@@ -129,6 +148,7 @@ async function readAfter(repo: string, path: string): Promise<Buffer> {
     const fullPath = `/proc/self/fd/${parent.fd}/${name}`
     const info = await lstat(fullPath)
     if (info.isSymbolicLink()) return Buffer.from(await readlink(fullPath))
+    if (info.isDirectory()) return await readSubmodule(repo, path)
     if (!info.isFile() || info.size > MAX_BYTES) return TOO_LARGE
 
     const file = await open(fullPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)

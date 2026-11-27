@@ -79,6 +79,41 @@ describe('changedFiles, cas limites', () => {
 })
 
 describe('fileVersions', () => {
+  it('affiche les références avant et après pour un sous-module ajouté, avancé ou retiré', async () => {
+    const library = join(dir, 'lib')
+    git(dir, 'init', '-q', '-b', 'main', library)
+    writeFileSync(join(library, 'fichier'), 'version initiale')
+    git(library, 'add', '.')
+    commit(library, 'initial')
+    const initial = git(library, 'rev-parse', 'HEAD').trim()
+    git(repo, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', library, 'component')
+    const versions = async () => {
+      const { mergeBase, files } = await changedFiles(repo)
+      const change = files.find(({ path }) => path === 'component')
+      expect(change).toBeDefined()
+      return fileVersions(repo, mergeBase, change!)
+    }
+
+    expect(await versions()).toEqual({ binary: false, before: '', after: `Subproject commit ${initial}\n` })
+    commit(repo, 'ajoute component')
+    git(repo, 'branch', '-f', 'main', 'HEAD')
+
+    const component = join(repo, 'component')
+    writeFileSync(join(component, 'fichier'), 'nouvelle version')
+    commit(component, 'avance')
+    const advanced = git(component, 'rev-parse', 'HEAD').trim()
+    expect(await versions()).toEqual({
+      binary: false,
+      before: `Subproject commit ${initial}\n`,
+      after: `Subproject commit ${advanced}\n`,
+    })
+    git(repo, 'add', 'component')
+    expect((await versions()).after).toBe(`Subproject commit ${advanced}\n`)
+
+    git(repo, 'rm', '-qf', 'component')
+    expect(await versions()).toEqual({ binary: false, before: `Subproject commit ${initial}\n`, after: '' })
+  })
+
   it('refuse un chemin dont un dossier parent est un lien symbolique vers l’extérieur', async () => {
     mkdirSync(join(dir, 'dehors'))
     writeFileSync(join(dir, 'dehors', 'secret.txt'), 'NE PAS LIRE\n')
