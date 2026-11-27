@@ -23,6 +23,7 @@ const { registerTaskHandlers } = await import('./ipc')
 
 const projectId = randomUUID()
 let db: DatabaseSync
+let tasks: ReturnType<typeof registerTaskHandlers>
 const invoke = (channel: IpcChannel, raw: unknown) => handlers.get(channel)!({} as IpcMainInvokeEvent, raw)
 
 beforeEach(() => {
@@ -31,9 +32,9 @@ beforeEach(() => {
   db.prepare('INSERT INTO projects (id, path, git_dir, name, added_at) VALUES (?, ?, ?, ?, ?)').run(
     projectId, '/repo', '/repo/.git', 'repo', 0,
   )
-  registerTaskHandlers(db, { start: vi.fn(), activeCount: () => 0, onSlotAvailable: vi.fn() })
+  tasks = registerTaskHandlers(db, { start: vi.fn(), activeCount: () => 0, onSlotAvailable: vi.fn() })
 })
-afterEach(() => db.close())
+afterEach(() => { tasks.close(); db.close() })
 
 it('crée, édite puis déplace une tâche du projet', async () => {
   const [created] = (await invoke('tasks:create', { projectId, title: ' Tâche ', body: '' })) as { id: number }[]
