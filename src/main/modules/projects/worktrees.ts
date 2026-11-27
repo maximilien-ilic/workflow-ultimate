@@ -28,6 +28,22 @@ export async function issueBranch(repo: string, issue: number, source?: string):
 // Repli tant qu'aucun dossier de workspaces n'a été importé.
 export const defaultWorkspaces = () => join(homedir(), 'workflow-ultimate', 'workspaces')
 
+// Branche de base : celle de origin/HEAD si elle existe, sinon main, sinon master.
+export async function defaultBranchRef(repo: string): Promise<string> {
+  const remoteHead = await runGit(repo, ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']).catch(
+    () => '',
+  )
+  const candidates = [remoteHead, 'refs/heads/main', 'refs/heads/master'].filter(Boolean)
+  for (const ref of candidates) {
+    const exists = await runGit(repo, ['rev-parse', '--verify', '--quiet', ref]).then(
+      () => true,
+      () => false,
+    )
+    if (exists) return ref
+  }
+  throw new Error('Branche de base introuvable (ni origin/HEAD, ni main, ni master)')
+}
+
 export async function branchExists(repo: string, branch: string): Promise<boolean> {
   return runGit(repo, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]).then(
     () => true,

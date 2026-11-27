@@ -11,7 +11,7 @@ test.beforeEach(() => {
 })
 test.afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-async function launchTaskProject() {
+async function launchTaskProject(setupRepo?: (repo: string) => void) {
   const repo = join(dir, 'projet')
   const config = join(dir, 'config', 'workflow-ultimate')
   const workspaces = join(dir, 'worktrees')
@@ -30,6 +30,7 @@ async function launchTaskProject() {
     '-qm',
     'Initial',
   ])
+  setupRepo?.(repo)
   mkdirSync(config, { recursive: true })
   writeFileSync(join(config, 'settings.json'), JSON.stringify({ orcaImport: { seen: true, workspaces } }))
   writeFileSync(
@@ -156,3 +157,49 @@ test('limite quatre agents, réordonne les envois au clavier et reprend la file'
     await app.close()
   }
 })
+
+
+for (const remoteDefault of [false, true]) {
+  test(`choisit le commit de référence pour une nouvelle tâche (${remoteDefault ? 'branche distante trunk' : 'main locale'})`, async () => {
+    let reference: string
+    let unrelated: string
+    const existing = join(dir, 'existant')
+    const { app, page, projectId } = await launchTaskProject((repo) => {
+      const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim()
+      reference = git('rev-parse', 'main')
+      git('switch', '-qc', 'sans-rapport')
+      git('-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '--allow-empty', '-qm', 'Sans rapport')
+      unrelated = git('rev-parse', 'HEAD')
+      if (remoteDefault) {
+        git('update-ref', 'refs/remotes/origin/trunk', reference)
+        git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
+        git('branch', '-f', 'main', unrelated)
+      }
+      git('worktree', 'add', '-qb', 'branche-existante', existing)
+    })
+    try {
+      const newTask = () => page.evaluate(async (projectId) =>
+        (await window.wu.invoke('tasks:create', { projectId, title: 'Tâche', body: '' })).at(-1)!.id,
+      projectId)
+      const fresh = await newTask()
+      const previous = await newTask()
+      using db = new DatabaseSync(join(dir, 'data', 'workflow-ultimate', 'app.db'))
+      db.prepare('UPDATE tasks SET agent_branch = ? WHERE id = ?').run('branche-existante', previous)
+      const dispatch = (id: number) => page.evaluate(({ id, projectId }) =>
+        window.wu.invoke('tasks:dispatch', { id, projectId, agent: 'codex' }), { id, projectId })
+      await dispatch(fresh)
+      await dispatch(previous)
+
+      const cwd = db.prepare('SELECT cwd FROM tasks JOIN agent_sessions ON agent_sessions.id = agent_session_id WHERE tasks.id = ?')
+      const commit = (id: number) => {
+        const row = cwd.get(id) as { cwd: string } | undefined
+        return row && execFileSync('git', ['-C', row.cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+      }
+      await expect.poll(() => commit(previous)).toBe(unrelated!)
+      expect(cwd.get(previous)).toEqual({ cwd: existing })
+      await expect.poll(() => commit(fresh)).toBe(reference!)
+    } finally {
+      await app.close()
+    }
+  })
+}

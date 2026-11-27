@@ -4,6 +4,7 @@ import { lstat, open, readlink } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { gitEnv, runGit } from '../projects/git-env'
+import { defaultBranchRef } from '../projects/worktrees'
 
 const exec = promisify(execFile)
 
@@ -35,29 +36,13 @@ export function parseNameStatus(raw: string): ChangedFile[] {
   return files
 }
 
-// Branche de base : celle de origin/HEAD si elle existe, sinon main, sinon master.
-async function baseBranch(repo: string): Promise<string> {
-  const remoteHead = await runGit(repo, ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']).catch(
-    () => '',
-  )
-  const candidates = [remoteHead, 'refs/heads/main', 'refs/heads/master'].filter(Boolean)
-  for (const ref of candidates) {
-    const exists = await runGit(repo, ['rev-parse', '--verify', '--quiet', ref]).then(
-      () => true,
-      () => false,
-    )
-    if (exists) return ref
-  }
-  throw new Error('Branche de base introuvable (ni origin/HEAD, ni main, ni master)')
-}
-
 async function diffFiles(repo: string, base: string): Promise<ChangedFile[]> {
   return parseNameStatus(await runGit(repo, ['diff', '--name-status', '-z', '-M', base, '--']))
 }
 
 // Les fichiers absents du diff de branche peuvent encore contenir un changement local par rapport à HEAD.
 export async function changedFiles(repo: string) {
-  const [baseRef, head] = await Promise.all([baseBranch(repo), runGit(repo, ['rev-parse', 'HEAD'])])
+  const [baseRef, head] = await Promise.all([defaultBranchRef(repo), runGit(repo, ['rev-parse', 'HEAD'])])
   const mergeBase = await runGit(repo, ['merge-base', head, baseRef])
   const base = baseRef.replace(/^refs\/(heads|remotes)\//, '')
   const [tracked, working, untrackedRaw] = await Promise.all([
