@@ -5,6 +5,7 @@ import type { Settings } from '../../../shared/settings'
 import { CommandPalette } from '../palette/CommandPalette'
 import { registerCommand } from '../palette/commands'
 import { Diagnostics } from './Diagnostics'
+import { KdeTheme } from './KdeTheme'
 import { useSettings } from './use-settings'
 import './layout.css'
 
@@ -189,6 +190,7 @@ export function ShellLayout({
             }))
           }
         />
+        <KdeTheme controls />
       </div>
       {error && <p role="alert">{error}</p>}
       <Diagnostics />

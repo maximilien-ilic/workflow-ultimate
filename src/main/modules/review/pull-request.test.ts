@@ -43,6 +43,14 @@ it('préremplit le titre, le corps et la fermeture du ticket à partir du worktr
   })
 })
 
+it('ne déduit pas d’issue d’une branche héritée appartenant à une tâche locale', async () => {
+  fakeGh('echo "[]"')
+  const belongsToLocalTask = (branch: string) => branch === 'feat/42-contexte'
+  await expect(readPullRequest(repo, (branch) => !belongsToLocalTask(branch))).resolves.toMatchObject({
+    kind: 'draft', branch: 'feat/42-contexte', body: 'Détail du changement.',
+  })
+})
+
 it.each([['pending', 8], ['fail', 1]])('conserve les checks %s même si gh sort avec le code %i', async (bucket, code) => {
   fakeGh(`
     case "$2" in

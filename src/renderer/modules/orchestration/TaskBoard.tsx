@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { taskStatuses, type Task, type TaskQueue, type TaskStatus } from '../../../shared/ipc'
+import { taskStatuses, type IpcResponse, type Task, type TaskQueue, type TaskStatus } from '../../../shared/ipc'
 import { registerCommand } from '../palette/commands'
 import { TaskDispatchForm, type SendTask } from './TaskDispatchForm'
 import { TaskQueuePanel } from './TaskQueuePanel'
@@ -104,8 +104,10 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [queue, setQueue] = useState<TaskQueue | null>(null)
   const [error, setError] = useState('')
+  const [dispatchFailures, setDispatchFailures] = useState<IpcResponse<'tasks:dispatchFailures'>>([])
   const [lastMove, setLastMove] = useState<Move | null>(null)
 
+  const importPending = useRef(false)
   const [importing, setImporting] = useState(false)
 
   const apply = useCallback(async (request: Promise<Task[]>) => {
@@ -119,26 +121,39 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
     }
   }, [])
   const importIssues = useCallback((id: string) => {
+    if (importPending.current) return
+    importPending.current = true
     setImporting(true)
-    void apply(window.wu.invoke('tasks:importIssues', { projectId: id })).finally(() => setImporting(false))
+    void apply(window.wu.invoke('tasks:importIssues', { projectId: id })).finally(() => {
+      importPending.current = false
+      setImporting(false)
+    })
   }, [apply])
 
   const updateQueue = useCallback((request: Promise<TaskQueue>) => {
     void request.then(setQueue, (reason: unknown) => setError(String(reason)))
   }, [])
 
+  const refreshFailures = useCallback((projectId: string) => {
+    void window.wu.invoke('tasks:dispatchFailures', { projectId })
+      .then(setDispatchFailures, (reason: unknown) => setError(String(reason)))
+  }, [])
+
   useEffect(() => window.wu.onTasksChanged((change) => {
     setQueue(change.queue)
     if (!projectId || change.projectId !== projectId || !dialog.current?.open) return
-    if (change.error) setError(change.error)
+    refreshFailures(projectId)
     void window.wu.invoke('tasks:list', { projectId }).then(setTasks, (reason: unknown) => setError(String(reason)))
-  }), [projectId])
+  }), [projectId, refreshFailures])
 
   useEffect(() => {
     const showBoard = (load: (id: string) => void) => {
       if (!dialog.current?.open) dialog.current?.showModal()
       updateQueue(window.wu.invoke('tasks:queue', {}))
-      if (projectId) load(projectId)
+      if (projectId) {
+        refreshFailures(projectId)
+        load(projectId)
+      }
     }
     const removeBoard = registerCommand({
       id: 'orchestration.tasks',
@@ -155,7 +170,7 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
       removeBoard()
       removeImport()
     }
-  }, [projectId, apply, importIssues, updateQueue])
+  }, [projectId, apply, importIssues, refreshFailures, updateQueue])
 
   const move = (task: Task, direction: Direction) => {
     const status = neighbour(task.status, direction)
@@ -176,6 +191,11 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
       )}
       <p role="status">{importing ? 'Import des issues…' : ''}</p>
       {error && <p role="alert">{error}</p>}
+      {dispatchFailures.length > 0 && <div role="alert">
+        <ul aria-label="Échecs d’envoi">
+          {dispatchFailures.map(({ id, message }) => <li key={id}>{message}</li>)}
+        </ul>
+      </div>}
       {projectId && <div className="task-board-columns">{taskStatuses.map((status) => (
         <section key={status} aria-label={columnTitles[status]}>
           <h3>{columnTitles[status]}</h3>

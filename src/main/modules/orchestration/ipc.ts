@@ -8,8 +8,9 @@ import { createTaskDispatch, readDispatchTask } from './task-dispatch'
 import { createTaskTransitions, TASK_PR_POLL_INTERVAL_MS } from './task-transitions'
 import { createTasks } from './tasks'
 
-export function registerTaskHandlers(db: DatabaseSync, agents: Pick<AgentSessions, 'start' | 'activeCount' | 'onSlotAvailable'>) {
+export function registerTaskHandlers(db: DatabaseSync, agents: Pick<AgentSessions, 'start' | 'activeCount' | 'onSlotAvailable' | 'isOpen'>) {
   const tasks = createTasks(db)
+  const imports = new Map<string, Promise<void>>()
   const dispatch = createTaskDispatch(db, agents)
   const queue = registerTaskQueue(agents)
   const transitions = createTaskTransitions(db, queue.notify)
@@ -33,7 +34,7 @@ export function registerTaskHandlers(db: DatabaseSync, agents: Pick<AgentSession
   })
   handle('tasks:dispatch', (request, { sender }) => {
     const { id, projectId, agent } = request
-    const { title } = readDispatchTask(db, request)
+    const { title } = readDispatchTask(db, request, agents.isOpen)
     queue.enqueue({ id, projectId, title, agent }, async (hasSlot) => {
       const started = await dispatch(request, sender, hasSlot)
       if (started) refresh()
@@ -48,10 +49,16 @@ export function registerTaskHandlers(db: DatabaseSync, agents: Pick<AgentSession
     return listOf(projectId)
   })
   handle('tasks:importIssues', async ({ projectId }) => {
-    await syncIssues(db, projectId)
+    let pending = imports.get(projectId)
+    if (!pending) {
+      pending = syncIssues(db, projectId).finally(() => { imports.delete(projectId) })
+      imports.set(projectId, pending)
+    }
+    await pending
     return tasks.list(projectId)
   })
   return {
+    ownsLocalBranch: tasks.ownsLocalBranch,
     refresh,
     close() {
       clearInterval(timer)

@@ -53,3 +53,24 @@ body {
 .shell-panel-right {
   order: 2;
 }
+
+.kde-theme-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space, 4px);
+}
+
+:root[data-kde-theme] {
+  background-color: var(--bg, Canvas);
+  color: var(--fg, CanvasText);
+  accent-color: var(--accent, auto);
+}
+
+:root[data-kde-theme] dialog {
+  background-color: var(--bg, Canvas);
+  color: var(--fg, CanvasText);
+}
+
+:root[data-kde-theme] :focus-visible {
+  outline-color: var(--accent, Highlight);
+}

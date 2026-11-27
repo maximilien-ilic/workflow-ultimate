@@ -73,10 +73,18 @@ function slug(text: string): string {
   return cut > 0 ? full.slice(0, cut) : full.slice(0, 40)
 }
 
+function namedBranch(prefix: string, title: string): string {
+  const suffix = slug(title)
+  return suffix ? `${prefix}-${suffix}` : prefix
+}
+
 // Ticket GitHub → nom de branche, comme dans docs/ORCHESTRATION.md : feat/<n>-<titre court>.
 export function branchForIssue(issue: number, title: string): string {
-  const s = slug(title)
-  return s ? `feat/${issue}-${s}` : `feat/${issue}`
+  return namedBranch(`feat/${issue}`, title)
+}
+
+export function branchForLocalTask(id: number, title: string): string {
+  return namedBranch(`feat/task-${id}`, title)
 }
 
 export async function listWorktrees(repo: string): Promise<Worktree[]> {
@@ -113,7 +121,8 @@ export async function createWorktree(
     await mkdir(path)
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
-    if (code !== 'EEXIST') throw error
+    if (code !== 'EEXIST' && code !== 'ENAMETOOLONG') throw error
+    // Avec le suffixe de mkdtemp, 80 unités UTF-16 tiennent encore dans 255 octets UTF-8.
     path = await mkdtemp(join(realParent, `${name.slice(0, 80)}-`))
   }
   const create = opts.create ?? !(await branchExists(repo, opts.branch))
