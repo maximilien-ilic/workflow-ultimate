@@ -104,6 +104,35 @@ it('protège le dossier en 0700 et efface les fichiers du volet retiré', () => 
   expect(existsSync(temporarySnapshot)).toBe(false)
 })
 
+it('préserve la disposition et ses historiques si l’enregistrement échoue avant une nouvelle tentative', () => {
+  const survivor = { ...layout.tabs[0]!, id: orphan, activePane: orphan, tree: { type: 'pane' as const, id: orphan } }
+  const original = { ...layout, tabs: [...layout.tabs, survivor] }
+  const afterRemoval = { tabs: [survivor], activeTab: orphan }
+  const survivorScreen = { ...screen, data: 'historique du volet conservé' }
+  start()
+  call('saveLayout', original)
+  call('saveHistory', { id: pane, ...screen })
+  call('saveHistory', { id: orphan, ...survivorScreen })
+
+  const blocked = file('layout.json.tmp')
+  mkdirSync(blocked)
+  expect(() => call('saveLayout', afterRemoval)).toThrow()
+  expect(call('workspace')).toMatchObject({ layout: original })
+
+  start()
+  expect(call('workspace')).toMatchObject({ layout: original })
+  expect(call('loadHistory', { id: pane })).toEqual({ ...screen, cwd: '/tmp' })
+  expect(call('loadHistory', { id: orphan })).toEqual({ ...survivorScreen, cwd: '/tmp' })
+
+  rmSync(blocked, { recursive: true })
+  call('saveLayout', afterRemoval)
+  call('saveHistory', { id: pane, ...screen })
+  expect(existsSync(file(`${pane}.json`))).toBe(false)
+  start()
+  expect(call('workspace')).toMatchObject({ layout: afterRemoval })
+  expect(call('loadHistory', { id: orphan })).toEqual({ ...survivorScreen, cwd: '/tmp' })
+})
+
 function openWindow(crashed = false) {
   vi.useFakeTimers()
   const webContents = { send: vi.fn(), isCrashed: () => crashed }
