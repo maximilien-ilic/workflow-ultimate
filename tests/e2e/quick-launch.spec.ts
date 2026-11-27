@@ -119,3 +119,66 @@ test('ouvre le lanceur, annule avec Échap et lance dans le worktree choisi avec
     await app.close()
   }
 })
+
+for (const { state, exited, label } of [
+  { state: 'waiting', exited: false, label: 'attend une réponse' },
+  { state: 'done', exited: true, label: 'terminé' },
+]) {
+  test(`rattache le lanceur avec l’état « ${label} » reçu pendant la restauration`, async () => {
+    const app = await _electron.launch({
+      args: ['out/main/index.js', '--user-data-dir=' + join(output, 'profile')],
+      env: {
+        ...process.env,
+        XDG_CONFIG_HOME: join(output, 'config'),
+        XDG_DATA_HOME: join(output, 'data'),
+      },
+    })
+    try {
+      const page = await app.firstWindow()
+      await expect(page.getByRole('heading', { name: 'Workflow Ultimate' })).toBeVisible()
+      const gate = await app.evaluateHandle(({ BrowserWindow }) => {
+        const contents = BrowserWindow.getAllWindows()[0]!.webContents
+        let release!: () => void
+        let restoring = false
+        const blocked = new Promise<void>((resolve) => { release = resolve })
+        contents.ipc.handle('terminal:workspace', async () => {
+          restoring = true
+          await blocked
+          return { layout: { tabs: [], activeTab: null }, livePanes: [], historyPanes: [] }
+        })
+        contents.ipc.handle('terminal:attach', () => ({ data: '', offset: 0 }))
+        return {
+          restoring: () => restoring,
+          release,
+          send(state: string, exited: boolean) {
+            const terminalId = crypto.randomUUID()
+            const sessionId = crypto.randomUUID()
+            contents.send('agents:quickStarted', {
+              id: sessionId, terminalId, agent: 'claude-code', state: 'starting', cwd: '/tmp', updatedAt: 0,
+            })
+            contents.send('agent:event', { sessionId, terminalId, state })
+            if (exited) contents.send('terminal:event', { type: 'exit', id: terminalId, exitCode: 0, signal: null })
+          },
+        }
+      })
+      await page.reload()
+      await expect.poll(() => gate.evaluate((pending) => pending.restoring())).toBe(true)
+      await page.evaluate(() => {
+        window.wu.onAgentEvent(() => document.documentElement.setAttribute('data-agent-event', 'received'))
+        window.wu.onTerminalEvent((event) => {
+          if (event.type === 'exit') document.documentElement.setAttribute('data-agent-exit', 'received')
+        })
+      })
+      await gate.evaluate((pending, args) => pending.send(args.state, args.exited), { state, exited })
+      await expect(page.locator('html')).toHaveAttribute('data-agent-event', 'received')
+      if (exited) await expect(page.locator('html')).toHaveAttribute('data-agent-exit', 'received')
+      await gate.evaluate((pending) => pending.release())
+      const agent = page.getByRole('region', { name: 'Agent Claude Code' })
+      await expect(agent.getByRole('status')).toContainText(label)
+      const action = agent.getByRole('button', { name: exited ? 'Reprendre' : 'Interrompre' })
+      await expect(action).toBeVisible()
+    } finally {
+      await app.close()
+    }
+  })
+}
