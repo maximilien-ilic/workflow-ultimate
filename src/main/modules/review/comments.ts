@@ -2,12 +2,13 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { ReviewComment } from '../../../shared/ipc'
 
 type Worktree = { projectId: string; worktreePath: string }
-type Draft = Pick<ReviewComment, 'path' | 'line' | 'body'>
+type Draft = Pick<ReviewComment, 'path' | 'line' | 'body'> & { side: NonNullable<ReviewComment['side']> }
+const sideLabel = { before: 'avant', after: 'après' }
 
 const singleLine = (value: string) => value.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, ' ')
 
 function agentMessage(comments: ReviewComment[]): string {
-  const lines = comments.map(({ path, line, body }) => `${singleLine(path)}:${line} — ${singleLine(body)}`)
+  const lines = comments.map(({ path, line, side, body }) => `${singleLine(path)}:${line} (${side ? sideLabel[side] : 'côté indéterminé'}) — ${singleLine(body)}`)
   // Les retours à la ligne restent dans le collage. Une seule touche Entrée soumet le lot.
   return `\x1b[200~Commentaires de revue :\n${lines.join('\n')}\x1b[201~\r`
 }
@@ -15,17 +16,17 @@ function agentMessage(comments: ReviewComment[]): string {
 export function createReviewComments(db: DatabaseSync) {
   const sending = new Set<string>()
   const select = db.prepare(`
-    SELECT id, path, line, body, sent_at AS sentAt FROM review_comments
+    SELECT id, path, line, side, body, sent_at AS sentAt FROM review_comments
     WHERE project_id = ? AND worktree_path = ? ORDER BY id
   `)
   const insert = db.prepare(`
-    INSERT INTO review_comments (project_id, worktree_path, path, line, body) VALUES (?, ?, ?, ?, ?)
+    INSERT INTO review_comments (project_id, worktree_path, path, line, side, body) VALUES (?, ?, ?, ?, ?, ?)
   `)
   const list = ({ projectId, worktreePath }: Worktree) => select.all(projectId, worktreePath) as ReviewComment[]
   return {
     list,
-    add({ projectId, worktreePath }: Worktree, { path, line, body }: Draft) {
-      insert.run(projectId, worktreePath, path, line, body)
+    add({ projectId, worktreePath }: Worktree, { path, line, side, body }: Draft) {
+      insert.run(projectId, worktreePath, path, line, side, body)
     },
     async send(target: Worktree, write: (message: string) => Promise<void>): Promise<number> {
       const key = JSON.stringify([target.projectId, target.worktreePath])

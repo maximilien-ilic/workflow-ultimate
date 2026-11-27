@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useImperativeHandle, useState, useSyncExternalStore, type FormEvent, type Ref } from 'react'
-import type { ReviewComment } from '../../../shared/ipc'
+import type { ReviewComment, ReviewCommentSide } from '../../../shared/ipc'
 import { agentStore } from '../agents/agent-store'
 import { paneIds } from '../terminals/pane-tree'
 import { terminalStore } from '../terminals/terminal-store'
 
-export type ReviewCommentEditor = { selectLine(path: string, line: number): void }
+export type CommentAnchor = { line: number; maxLine: number; side: ReviewCommentSide }
+export type ReviewCommentEditor = { selectLine(path: string, anchor: CommentAnchor): void }
 type Props = {
-  projectId: string; worktreePath: string; filePath?: string; line: number; maxLine?: number
+  projectId: string; worktreePath: string; filePath?: string; anchor?: CommentAnchor
   ref?: Ref<ReviewCommentEditor>
 }
-type Draft = { line: string; body: string }
+type Draft = Omit<CommentAnchor, 'line'> & { line: string; body: string }
+const sideLabel = { before: 'Avant', after: 'Après' }
+const anchorToDraft = (anchor: CommentAnchor): Draft => ({ ...anchor, line: String(anchor.line), body: '' })
 
-export function ReviewComments({ projectId, worktreePath, filePath, line, maxLine, ref }: Props) {
+export function ReviewComments({ projectId, worktreePath, filePath, anchor, ref }: Props) {
   const [comments, setComments] = useState<ReviewComment[] | null>(null)
   const [drafts, setDrafts] = useState(() => new Map<string, Draft>())
   const [selectedAgent, setSelectedAgent] = useState('')
@@ -27,14 +30,15 @@ export function ReviewComments({ projectId, worktreePath, filePath, line, maxLin
   )
   const recipient = agents.find(({ sessionId }) => sessionId === selectedAgent) ?? agents[0]
   const hasPending = comments?.some(({ sentAt }) => sentAt === null)
-  const draft = (filePath && drafts.get(filePath)) || { line: String(line), body: '' }
-  const editDraft = useCallback((path: string, changes: Partial<Draft>) => {
-    setDrafts((previous) => new Map(previous).set(path, {
-      ...(previous.get(path) ?? { line: String(line), body: '' }), ...changes,
-    }))
-  }, [line])
+  const draft = filePath && anchor ? drafts.get(filePath) ?? anchorToDraft(anchor) : undefined
+  const editDraft = useCallback((path: string, fallback: Draft, changes: Partial<Draft>) => {
+    setDrafts((previous) => new Map(previous).set(path, { ...(previous.get(path) ?? fallback), ...changes }))
+  }, [])
   useImperativeHandle(ref, () => ({
-    selectLine: (path, selectedLine) => editDraft(path, { line: String(selectedLine) }),
+    selectLine: (path, selection) => {
+      const next = anchorToDraft(selection)
+      editDraft(path, next, { line: next.line, side: next.side, maxLine: next.maxLine })
+    },
   }), [editDraft])
 
   useEffect(() => {
@@ -61,11 +65,11 @@ export function ReviewComments({ projectId, worktreePath, filePath, line, maxLin
 
   function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!filePath) return
+    if (!filePath || !draft) return
     void run(async () => {
       const result = await window.wu.invoke('review:addComment', {
         projectId, worktreePath, path: filePath,
-        line: Number(draft.line), body: draft.body,
+        line: Number(draft.line), side: draft.side, body: draft.body,
       })
       setDrafts((previous) => {
         const next = new Map(previous)
@@ -79,15 +83,17 @@ export function ReviewComments({ projectId, worktreePath, filePath, line, maxLin
   return (
     <section className="review-comments" aria-label="Commentaires de revue">
       <h3>Commentaires de revue</h3>
-      {filePath && maxLine !== undefined && (
+      {filePath && draft && (
         <form key={filePath} onSubmit={add}>
+          <span id="review-comment-side">{sideLabel[draft.side]}</span>
           <label>
-            Ligne <input name="line" type="number" min={1} max={maxLine} required disabled={busy}
-              value={draft.line} onChange={(event) => editDraft(filePath, { line: event.target.value })} />
+            Ligne <input name="line" type="number" min={1} max={draft.maxLine} required disabled={busy}
+              aria-describedby="review-comment-side"
+              value={draft.line} onChange={(event) => editDraft(filePath, draft, { line: event.target.value })} />
           </label>
           <label>
             Commentaire <textarea name="body" maxLength={4000} required disabled={busy}
-              value={draft.body} onChange={(event) => editDraft(filePath, { body: event.target.value })} />
+              value={draft.body} onChange={(event) => editDraft(filePath, draft, { body: event.target.value })} />
           </label>
           <button disabled={busy || !comments}>Ajouter le commentaire</button>
         </form>
@@ -96,7 +102,7 @@ export function ReviewComments({ projectId, worktreePath, filePath, line, maxLin
         <ul>
           {comments.map((comment) => (
             <li key={comment.id}>
-              {comment.path}:{comment.line} — {comment.body} · <span>{comment.sentAt ? 'Envoyé' : 'À envoyer'}</span>
+              {comment.path}:{comment.line} ({comment.side ? sideLabel[comment.side].toLowerCase() : 'côté indéterminé'}) — {comment.body} · <span>{comment.sentAt ? 'Envoyé' : 'À envoyer'}</span>
             </li>
           ))}
         </ul>

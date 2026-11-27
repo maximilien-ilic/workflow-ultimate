@@ -24,9 +24,9 @@ export function registerReviewHandlers(
     await checkedWorktree(db, target.projectId, target.worktreePath)
     return comments.list(target)
   })
-  handle('review:addComment', async ({ projectId, worktreePath, path, line, body }) => {
+  handle('review:addComment', async ({ projectId, worktreePath, path, line, side, body }) => {
     const target = { projectId, worktreePath: await checkedWorktree(db, projectId, worktreePath) }
-    comments.add(target, { path: insideWorktree(target.worktreePath, path), line, body })
+    comments.add(target, { path: insideWorktree(target.worktreePath, path), line, side, body })
     return comments.list(target)
   })
   handle('review:sendComments', async ({ projectId, worktreePath, sessionId }, event) => {
