@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from 'react'
+import { useId, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from 'react'
 import type { AgentSession, PickResult, Project } from '../../../shared/ipc'
 import { startAgent } from '../agents/agent-store'
 import { terminalStore } from '../terminals/terminal-store'
@@ -19,6 +19,7 @@ function statusText(status: WorktreeSelection['worktree']['status']): string {
 }
 
 export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
+  const statusId = useId()
   const { groups, selected, select, refresh, error, collapsed, expand } = workspace
   const [focusKey, setFocusKey] = useState<string>()
   const [messages, setMessages] = useState<string[]>([])
@@ -202,7 +203,7 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
         </div>
       )}
       <div role="tree" aria-label="Projets et worktrees" className="project-tree" onKeyDown={navigate}>
-        {rows.map(({ key, project, worktree }) => (
+        {rows.map(({ key, project, worktree }, index) => (
           <button
             key={key}
             type="button"
@@ -210,7 +211,7 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
             data-tree-key={key}
             tabIndex={key === tabStop ? 0 : -1}
             aria-level={worktree ? 2 : 1}
-            aria-label={worktree ? worktreeLabel(worktree) : project.name}
+            aria-describedby={worktree ? `${statusId}-${index}` : undefined}
             aria-expanded={worktree ? undefined : !collapsed.has(project.id)}
             aria-selected={worktree ? worktree.path === selected?.worktree.path : undefined}
             title={worktree?.path ?? project.path}
@@ -219,11 +220,12 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
           >
             {worktree ? (
               <>
-                <span>{worktreeLabel(worktree)}</span> <small>{statusText(worktree.status)}</small>
+                <span>{worktreeLabel(worktree)}</span>{' '}
+                <small id={`${statusId}-${index}`} aria-hidden="true">{statusText(worktree.status)}</small>
               </>
             ) : (
               <strong>
-                {collapsed.has(project.id) ? '▸' : '▾'} {project.name}
+                <span aria-hidden="true">{collapsed.has(project.id) ? '▸' : '▾'}</span> {project.name}
               </strong>
             )}
           </button>
@@ -292,13 +294,12 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
           <button
             type="button"
             disabled={busy}
-            aria-label={`Retirer ${selected.project.name}`}
             onClick={(event) => {
               projectRemovalOpener.current = event.currentTarget
               removeProject(selected.project)
             }}
           >
-            Retirer le projet
+            Retirer {selected.project.name}
           </button>
           {creating && (
             <form onSubmit={create}>

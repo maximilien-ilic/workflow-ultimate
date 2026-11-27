@@ -35,8 +35,14 @@ const statusText: Record<ChangedFile['status'], string> = {
 const MESSAGE_BINARY = 'Fichier binaire ou trop gros : pas de diff affiché.'
 const MESSAGE_NO_WORKTREE = 'Sélectionnez un worktree dans la barre latérale.'
 
+function labelDiffEditors(diff: import('monaco-editor').editor.IStandaloneDiffEditor) {
+  // Monaco réinitialise les libellés des sous-éditeurs lors des changements de disposition.
+  diff.getOriginalEditor().updateOptions({ ariaLabel: 'Avant les modifications' })
+  diff.getModifiedEditor().updateOptions({ ariaLabel: 'Après les modifications' })
+}
+
 function createDiffEditor(monaco: Monaco, container: HTMLElement, inline: boolean) {
-  return monaco.editor.createDiffEditor(container, {
+  const diff = monaco.editor.createDiffEditor(container, {
     readOnly: true,
     automaticLayout: true,
     renderSideBySide: !inline,
@@ -44,6 +50,8 @@ function createDiffEditor(monaco: Monaco, container: HTMLElement, inline: boolea
     originalEditable: false,
     stickyScroll: { enabled: false }, // inutile pour lire un diff
   })
+  labelDiffEditors(diff)
+  return diff
 }
 
 function languageOf(monaco: Monaco, path: string): string | undefined {
@@ -175,7 +183,10 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
   const compareHead = Boolean(file && target?.headFiles.includes(file.path))
   useLayoutEffect(() => {
     inlineRef.current = inline
-    editor.current?.updateOptions({ renderSideBySide: !inline })
+    if (editor.current) {
+      editor.current.updateOptions({ renderSideBySide: !inline })
+      labelDiffEditors(editor.current)
+    }
   }, [inline])
 
   useLayoutEffect(() => {
