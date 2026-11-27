@@ -104,6 +104,13 @@ export const agentStore = {
   },
 }
 
+window.wu.onTaskAgentStarted(({ session, terminalId, branch }) => {
+  const name = session.agent === 'claude-code' ? 'Claude' : 'Codex'
+  const title = `${name} · ${branch}`
+  agentStore.started(terminalId, { sessionId: session.id, agent: session.agent, title }, session.state)
+  terminalStore.openAttachedTab(session.cwd, title, terminalId)
+})
+
 // DESIGN.md §3 : une icône et un libellé pour chaque état (la couleur seule ne suffit pas).
 export const stateLabel: Record<AgentState, { icon: string; text: string }> = {
   starting: { icon: '○', text: 'démarrage' },

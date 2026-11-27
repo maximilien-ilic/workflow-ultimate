@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { _electron, expect, test } from '@playwright/test'
+import { _electron, expect, test, type Locator, type Page } from '@playwright/test'
 
 let dir: string
 test.beforeEach(() => {
@@ -11,7 +11,7 @@ test.beforeEach(() => {
 })
 test.afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-test('envoie une tâche à Codex avec son contexte et conserve le lien vers la session', async () => {
+async function launchTaskProject() {
   const repo = join(dir, 'projet')
   const config = join(dir, 'config', 'workflow-ultimate')
   const workspaces = join(dir, 'worktrees')
@@ -49,25 +49,39 @@ test('envoie une tâche à Codex avec son contexte et conserve le lien vers la s
       FAKE_AGENT_SCENARIO: 'question',
     },
   })
+  const page = await app.firstWindow()
+  const project = await page.evaluate((path) => window.wu.invoke('projects:add', { path }), repo)
+  await page.reload()
+  return { app, page, projectId: project.id, promptFile, workspaces }
+}
+
+async function openBoard(page: Page) {
+  await expect(page.getByRole('treeitem', { selected: true })).toBeVisible()
+  await page.keyboard.press('Control+Shift+K')
+  return page.getByRole('dialog', { name: 'Tableau de tâches' })
+}
+
+async function sendToCodex(card: Locator) {
+  await card.getByRole('button', { name: 'Envoyer à un agent' }).click()
+  await card.getByRole('combobox', { name: 'Agent' }).selectOption('codex')
+  await card.getByRole('button', { name: 'Envoyer', exact: true }).click()
+}
+
+test('envoie une tâche à Codex avec son contexte et conserve le lien vers la session', async () => {
+  const { app, page, projectId, promptFile, workspaces } = await launchTaskProject()
   try {
-    const page = await app.firstWindow()
-    const task = await page.evaluate(async (path) => {
-      const project = await window.wu.invoke('projects:add', { path })
-      return (
-        await window.wu.invoke('tasks:create', {
-          projectId: project.id,
+    const [task] = await page.evaluate(
+      (id) =>
+        window.wu.invoke('tasks:create', {
+          projectId: id,
           title: 'Tester l’envoi',
           body: '- [ ] Conserver le lien',
-        })
-      )[0]!
-    }, repo)
-    await page.reload()
-    await expect(page.getByRole('treeitem', { selected: true })).toBeVisible()
-    await page.keyboard.press('Control+Shift+K')
-    const board = page.getByRole('dialog', { name: 'Tableau de tâches' })
-    await board.getByRole('button', { name: 'Envoyer à un agent' }).click()
-    await board.getByRole('combobox', { name: 'Agent' }).selectOption('codex')
-    await board.getByRole('button', { name: 'Envoyer', exact: true }).click()
+        }),
+      projectId,
+    )
+    if (!task) throw new Error('Tâche de test introuvable')
+    const board = await openBoard(page)
+    await sendToCodex(board)
     await expect(board.getByRole('region', { name: 'En cours' })).toContainText(task.title)
     await board.getByRole('button', { name: 'Fermer' }).click()
     const branch = `feat/${task.id}-tester-l-envoi`
@@ -89,6 +103,55 @@ test('envoie une tâche à Codex avec son contexte et conserve le lien vers la s
       agent_branch: branch,
       cwd: join(workspaces, 'projet', branch.replace('/', '-')),
     })
+  } finally {
+    await app.close()
+  }
+})
+
+test('limite quatre agents, réordonne les envois au clavier et reprend la file', async () => {
+  const { app, page, projectId } = await launchTaskProject()
+  try {
+    const titles = ['Premier', 'Deuxième', 'Troisième', 'Quatrième']
+    await page.evaluate(
+      async ({ projectId, titles }) => {
+        for (const title of titles) await window.wu.invoke('tasks:create', { projectId, title, body: '' })
+      },
+      { projectId, titles },
+    )
+    const board = await openBoard(page)
+    const queue = board.getByRole('region', { name: 'File d’attente' })
+    const limit = queue.getByRole('spinbutton', { name: 'Agents simultanés' })
+    const doing = board.getByRole('region', { name: 'En cours' })
+    await expect(limit).toHaveValue('3')
+    await limit.fill('2')
+    await limit.press('Enter')
+    for (const title of titles) {
+      await sendToCodex(board.getByRole('listitem').filter({ has: page.getByText(title, { exact: true }) }))
+    }
+    await expect(doing.getByRole('listitem')).toHaveCount(2)
+    await expect(queue.getByRole('listitem')).toHaveText([/Troisième/, /Quatrième/])
+    const advance = queue.getByRole('button', { name: 'Avancer « Quatrième »' })
+    await advance.press('Enter')
+    await expect(queue.getByRole('listitem')).toHaveText([/Quatrième/, /Troisième/])
+    await expect(advance).toBeFocused()
+
+    const sessions = () => page.evaluate(() => window.wu.invoke('agents:list', {}))
+    await expect
+      .poll(async () => (await sessions()).filter(({ state }) => state === 'waiting'))
+      .toHaveLength(2)
+    const first = (await sessions()).find(({ cwd }) => cwd.endsWith('-premier'))
+    await page.evaluate((id) => window.wu.invoke('terminal:write', { id, data: 'oui\r' }), first!.terminalId!)
+    await expect(doing).toContainText('Quatrième')
+    await expect(queue.getByRole('listitem')).toHaveText([/Troisième/])
+
+    await limit.fill('3')
+    await limit.press('Enter')
+    await expect(doing).toContainText('Troisième')
+    await expect(queue.getByRole('listitem')).toHaveCount(0)
+    expect(await sessions()).toHaveLength(4)
+    expect(
+      JSON.parse(readFileSync(join(dir, 'config', 'workflow-ultimate', 'settings.json'), 'utf8')),
+    ).toMatchObject({ maxConcurrentAgents: 3 })
   } finally {
     await app.close()
   }

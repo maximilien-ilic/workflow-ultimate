@@ -18,7 +18,7 @@ type DispatchTask = Task & { branch: string | null; sessionId: string | null }
 const terminalSize = { cols: 120, rows: 30 }
 const taskInstructions = 'Lis AGENTS.md avant de commencer.\nSpécification : [docs/SPEC.md](docs/SPEC.md)'
 
-function readTask(db: DatabaseSync, { projectId, id }: DispatchRequest): DispatchTask {
+export function readDispatchTask(db: DatabaseSync, { projectId, id }: DispatchRequest): DispatchTask {
   const task = db
     .prepare(
       `
@@ -72,39 +72,43 @@ function reserveBranch(db: DatabaseSync, { projectId, id }: DispatchRequest, bra
   if (!result.changes) throw new Error('La tâche a changé ou cette branche est réservée à une autre tâche.')
 }
 
-export function createTaskDispatch(db: DatabaseSync, agents: Pick<AgentSessions, 'start'>) {
-  const starting = new Set<number>()
+function showTaskAgent(owner: WebContents, event: TaskAgentStarted): void {
+  if (owner.isDestroyed()) return
+  const send = () => owner.send('tasks:agentStarted', event)
+  if (owner.isLoadingMainFrame()) owner.once('did-finish-load', send)
+  else send()
+}
 
-  async function dispatch(request: DispatchRequest, owner: WebContents): Promise<void> {
-    if (starting.has(request.id)) throw new Error('Cette tâche est déjà en cours d’envoi.')
-    const task = readTask(db, request)
-    starting.add(task.id)
-    try {
-      const repo = await checkedProjectPath(db, request.projectId)
-      const branch = await taskBranch(repo, task)
-      reserveBranch(db, request, branch)
-      const cwd = await worktreeForBranch(repo, branch)
-      if (owner.isDestroyed()) throw new Error('La fenêtre qui a demandé l’envoi est fermée.')
-      const terminalId = randomUUID()
-      const session = await agents.start(
-        { cwd, agent: request.agent, terminalId, prompt: buildPrompt(task), ...terminalSize },
-        owner,
+function linkSession(db: DatabaseSync, { id, projectId }: DispatchRequest, sessionId: string): boolean {
+  return Boolean(
+    db
+      .prepare(
+        `
+    UPDATE tasks SET agent_session_id = ?, status = CASE WHEN status = 'todo' THEN 'doing' ELSE status END
+    WHERE id = ? AND project_id = ?
+  `,
       )
-      const linked = db
-        .prepare(
-          `
-        UPDATE tasks SET agent_session_id = ?, status = CASE WHEN status = 'todo' THEN 'doing' ELSE status END
-        WHERE id = ? AND project_id = ?
-      `,
-        )
-        .run(session.id, task.id, request.projectId)
-      if (!owner.isDestroyed())
-        owner.send('tasks:agentStarted', { session, terminalId, branch } satisfies TaskAgentStarted)
-      if (!linked.changes) throw new Error('La tâche a été supprimée pendant le lancement.')
-    } finally {
-      starting.delete(task.id)
-    }
-  }
+      .run(sessionId, id, projectId).changes,
+  )
+}
 
-  return { dispatch, isStarting: (id: number) => starting.has(id) }
+export function createTaskDispatch(db: DatabaseSync, agents: Pick<AgentSessions, 'start'>) {
+  return async (request: DispatchRequest, owner: WebContents, hasSlot: () => boolean): Promise<boolean> => {
+    const task = readDispatchTask(db, request)
+    const repo = await checkedProjectPath(db, request.projectId)
+    const branch = await taskBranch(repo, task)
+    reserveBranch(db, request, branch)
+    const cwd = await worktreeForBranch(repo, branch)
+    if (!hasSlot()) return false
+    if (owner.isDestroyed()) throw new Error('La fenêtre qui a demandé l’envoi est fermée.')
+    const terminalId = randomUUID()
+    const session = await agents.start(
+      { cwd, agent: request.agent, terminalId, prompt: buildPrompt(task), ...terminalSize },
+      owner,
+    )
+    const linked = linkSession(db, request, session.id)
+    showTaskAgent(owner, { session, terminalId, branch })
+    if (!linked) throw new Error('La tâche a été supprimée pendant le lancement.')
+    return true
+  }
 }

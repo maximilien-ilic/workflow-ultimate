@@ -14,6 +14,8 @@ type Row = Identity & { state: AgentState; updated_at: number }
 type Live = { terminalId: string; owner: WebContents }
 
 export type AgentSessions = {
+  activeCount(): number
+  onSlotAvailable(listener: () => void): void
   start(request: IpcRequest<'agents:start'>, owner: WebContents): Promise<AgentSession>
   // Pour le socket : seule une session lancée dans cette exécution accepte des événements.
   sessionAgent(sessionId: string): AgentKind | undefined
@@ -34,6 +36,8 @@ export function registerAgentHandlers(
   const live = new Map<string, Live>()
   const byTerminal = new Map<string, string>() // terminal → session
   const pendingCodexIds = new Set<string>()
+  const slotListeners = new Set<() => void>()
+  const notifyAvailable = () => slotListeners.forEach((listener) => listener())
 
   const row = (id: string) =>
     db.prepare('SELECT * FROM agent_sessions WHERE id = ?').get(id) as Row | undefined
@@ -66,6 +70,7 @@ export function registerAgentHandlers(
         terminalId: session.terminalId,
         state,
       } satisfies AgentEvent)
+    if (state === 'done' || state === 'error') notifyAvailable()
     opts.onStateChange?.(toSession({ ...current, state, updated_at: updatedAt }))
   }
 
@@ -133,6 +138,7 @@ export function registerAgentHandlers(
           id,
         )
       else db.prepare('DELETE FROM agent_sessions WHERE id = ?').run(id)
+      notifyAvailable()
       throw error
     }
     return toSession(row(id)!)
@@ -158,6 +164,11 @@ export function registerAgentHandlers(
 
   return {
     start,
+    onSlotAvailable: (listener) => void slotListeners.add(listener),
+    activeCount: () => [...live.keys()].filter((id) => {
+      const state = row(id)?.state
+      return state === 'starting' || state === 'working' || state === 'waiting'
+    }).length,
     async writeReview(sessionId, cwd, owner, message) {
       const session = live.get(sessionId)
       const saved = row(sessionId)

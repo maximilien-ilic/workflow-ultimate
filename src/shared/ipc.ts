@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { settingsSchema, type Settings } from './settings'
+import { agentConcurrency, settingsSchema, type Settings } from './settings'
 import { HISTORY_CHARACTERS, type PaneTree } from './terminal-history'
 
 // Contrat unique main ↔ renderer. Pas d'import Node ni DOM ici.
@@ -147,6 +147,9 @@ export const ipcRequestSchemas = {
         .strict(),
     })
     .strict(),
+  'tasks:queue': z.strictObject({}),
+  'tasks:reorderQueue': z.strictObject({ id: taskId, direction: z.union([z.literal(-1), z.literal(1)]) }),
+  'settings:setAgentConcurrency': z.strictObject({ max: agentConcurrency }),
   'tasks:dispatch': z.strictObject({ projectId: z.uuid(), id: taskId, agent: agentKind }),
   'tasks:list': z.object({ projectId: z.uuid() }).strict(),
   'tasks:create': z.object({ projectId: z.uuid(), ...taskDraft }).strict(),
@@ -204,6 +207,9 @@ export type AgentSession = {
 }
 // Poussé sur le canal `agent:event` à la fenêtre qui a lancé l'agent.
 export type AgentDesktopEvent = { type: 'show-terminal'; terminalId: string } | { type: 'play-sound' }
+export type TaskQueueItem = { id: number; projectId: string; title: string; agent: AgentSession['agent'] }
+export type TaskQueue = { limit: number; pending: TaskQueueItem[] }
+export type TasksChanged = { projectId?: string; error?: string; queue: TaskQueue }
 export type TaskAgentStarted = { session: AgentSession; terminalId: string; branch: string }
 export type AgentEvent = { sessionId: string; terminalId: string; state: AgentState }
 export type ChangedFile = {
@@ -257,6 +263,9 @@ interface IpcResponses {
   'review:addComment': ReviewComment[]
   'review:sendComments': ReviewComment[]
   'review:createPr': { url: string }
+  'tasks:queue': TaskQueue
+  'tasks:reorderQueue': TaskQueue
+  'settings:setAgentConcurrency': TaskQueue
   'tasks:dispatch': Task[]
   'tasks:list': Task[]
   'tasks:create': Task[]
