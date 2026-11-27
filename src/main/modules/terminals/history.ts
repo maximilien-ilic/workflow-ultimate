@@ -115,6 +115,8 @@ export function registerTerminalHistory(
   handle('terminal:saveLayout', (next) => {
     const nextPanes = paneDirectories(next)
     const removed = [...panes.keys()].filter((id) => !nextPanes.has(id))
+    // Conserver les historiques de la dernière disposition durable tant que l’écriture peut échouer.
+    writeSaved(layoutFile, next)
     layout = next
     panes = nextPanes
     for (const id of removed) {
@@ -124,7 +126,6 @@ export function registerTerminalHistory(
       rmSync(`${historyFile(id)}.tmp`, { force: true })
       rmSync(join(directory, `${id}.tmp`), { force: true })
     }
-    writeSaved(layoutFile, layout)
     return null
   })
   handle('terminal:saveHistory', ({ id, ...screen }) => {
