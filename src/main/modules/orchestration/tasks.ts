@@ -19,10 +19,17 @@ export function createTasks(db: DatabaseSync) {
   const edit = db.prepare('UPDATE tasks SET title = ?, body = ? WHERE id = ? AND project_id = ?')
   const setStatus = db.prepare('UPDATE tasks SET status = ? WHERE id = ? AND project_id = ?')
   // Une issue fermée termine la tâche ; sinon la réimportation garde la colonne choisie dans l'appli.
+  // Un champ ne suit GitHub que s'il correspond encore à la dernière version reçue.
+  // Les lignes sans référence (créées avant la migration) gardent leur texte au premier import.
   const upsertIssue = db.prepare(`
-    INSERT INTO tasks (project_id, title, body, status, issue_number, issue_url) VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (project_id, title, body, status, issue_number, issue_url, github_title, github_body)
+    VALUES ($projectId, $title, $body, $status, $issueNumber, $issueUrl, $title, $body)
     ON CONFLICT (project_id, issue_number) DO UPDATE SET
-      title = excluded.title, body = excluded.body, issue_url = excluded.issue_url,
+      title = CASE WHEN tasks.title = tasks.github_title THEN excluded.title ELSE tasks.title END,
+      body = CASE WHEN tasks.body = tasks.github_body THEN excluded.body ELSE tasks.body END,
+      github_title = excluded.github_title,
+      github_body = excluded.github_body,
+      issue_url = excluded.issue_url,
       status = CASE WHEN excluded.status = 'done' THEN 'done' ELSE tasks.status END
   `)
   return {
@@ -35,7 +42,7 @@ export function createTasks(db: DatabaseSync) {
       expectOneTask(setStatus.run(status, id, projectId), id)
     },
     saveIssue(projectId: string, { title, body, status, issueNumber, issueUrl }: IssueTask) {
-      upsertIssue.run(projectId, title, body, status, issueNumber, issueUrl)
+      upsertIssue.run({ projectId, title, body, status, issueNumber, issueUrl })
     },
   }
 }
