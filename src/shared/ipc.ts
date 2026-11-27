@@ -90,6 +90,7 @@ export const ipcRequestSchemas = {
   'terminal:saveHistory': terminalScreenSchema.extend({ id: z.uuid() }),
   'terminal:historyFlushed': z.object({}).strict(),
   // Lien cliqué dans un terminal : ouvert dans le navigateur du système, http(s) seulement.
+  'shell:kdePalette': z.object({}).strict(),
   'shell:openUrl': z.object({ url: z.url({ protocol: /^https?$/ }).max(4096) }).strict(),
   // Lance l'agent dans un nouveau terminal `terminalId` (le renderer s'y rattache ensuite).
   'agents:start': z
@@ -189,6 +190,13 @@ export type PullRequestContext =
 export type AppInfo = { name: string; version: string; electron: string; node: string }
 export type Project = { id: string; path: string; name: string; addedAt: number }
 // Résultat d'un ajout par sélecteur : projets ajoutés et chemins refusés (avec la raison).
+export type KdePalette = {
+  background?: string
+  foreground?: string
+  accent?: string
+  scheme?: 'light' | 'dark'
+}
+
 export type Worktree = { path: string; branch: string | null; main: boolean }
 export type GitStatus = {
   branch: string | null
@@ -256,6 +264,7 @@ interface IpcResponses {
   'terminal:loadHistory': TerminalHistory | null
   'terminal:saveHistory': null
   'terminal:historyFlushed': null
+  'shell:kdePalette': KdePalette
   'shell:openUrl': null
   'agents:start': AgentSession
   'agents:resume': AgentSession
