@@ -42,6 +42,41 @@ describe('pty-host', () => {
     host.handle({ type: 'kill', id: 't1' })
   })
 
+  it('rejette un reçu si le PTY ferme avant la fin d’une écriture en attente', async () => {
+    const { host, events, output, waitFor } = setup()
+    host.handle({
+      type: 'spawn',
+      id: 't1',
+      file: process.execPath,
+      args: ['-e', `
+        process.stdin.setRawMode(true)
+        process.stdin.once('data', () => {
+          process.stdin.pause()
+          console.log('début reçu')
+        })
+        console.log('prêt')
+        setInterval(() => {}, 1000)
+      `],
+      ...base,
+    })
+    try {
+      await waitFor(() => output('t1').includes('prêt'))
+      const receipt = 'reçu-interrompu'
+      host.handle({ type: 'write', id: 't1', data: '界'.repeat(256 * 1024), receipt })
+      await waitFor(() => output('t1').includes('début reçu'))
+      expect(events.some((event) => event.type === 'written' && event.receipt === receipt)).toBe(false)
+      host.handle({ type: 'kill', id: 't1' })
+      await waitFor(() => events.some((event) => event.type === 'closed'))
+      expect(events).toContainEqual(expect.objectContaining({ type: 'error', request: 'write', receipt }))
+      expect(events.some((event) => event.type === 'written' && event.receipt === receipt)).toBe(false)
+    } finally {
+      if (!events.some((event) => event.type === 'closed')) {
+        host.handle({ type: 'kill', id: 't1' })
+        await waitFor(() => events.some((event) => event.type === 'closed'))
+      }
+    }
+  })
+
   it('rejoue la sortie déjà produite, même après la fin du processus', async () => {
     const { host, events, waitFor } = setup()
     host.handle({ type: 'spawn', id: 't1', file: 'sh', args: ['-c', 'echo trace'], ...base })

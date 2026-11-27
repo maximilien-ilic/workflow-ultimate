@@ -1,5 +1,7 @@
 // Protocole main ↔ pty-host. Le pty-host est un processus interne de confiance :
 // la validation des requêtes venant du renderer se fait dans le main, avant d'arriver ici.
+export const CONFIRMED_WRITE_TIMEOUT_MS = 5_000
+
 export type HostRequest =
   | {
       type: 'spawn'
