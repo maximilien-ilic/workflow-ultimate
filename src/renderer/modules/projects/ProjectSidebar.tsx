@@ -28,6 +28,7 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
   const confirmation = useRef<HTMLDialogElement>(null)
   const [projectRemoval, setProjectRemoval] = useState<{ project: Project; taskCount: number }>()
   const projectConfirmation = useRef<HTMLDialogElement>(null)
+  const projectRemovalOpener = useRef<HTMLButtonElement>(null)
   const rows: Row[] = groups.flatMap(({ project, worktrees }) => [
     { key: project.id, project },
     ...(collapsed.has(project.id)
@@ -238,7 +239,10 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
                   {project.name} · {error}
                 </p>
               )}
-              <button type="button" disabled={busy} onClick={() => removeProject(project)}>
+              <button type="button" disabled={busy} onClick={(event) => {
+                projectRemovalOpener.current = event.currentTarget
+                removeProject(project)
+              }}>
                 Retirer {project.name}
               </button>
             </div>
@@ -289,7 +293,10 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
             type="button"
             disabled={busy}
             aria-label={`Retirer ${selected.project.name}`}
-            onClick={() => removeProject(selected.project)}
+            onClick={(event) => {
+              projectRemovalOpener.current = event.currentTarget
+              removeProject(selected.project)
+            }}
           >
             Retirer le projet
           </button>
@@ -308,7 +315,15 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
           )}
         </div>
       )}
-      <dialog ref={projectConfirmation} aria-label={`Retirer le projet ${projectRemoval?.project.name ?? ''}`}>
+      <dialog
+        ref={projectConfirmation}
+        aria-label={`Retirer le projet ${projectRemoval?.project.name ?? ''}`}
+        onClose={() => {
+          const opener = projectRemovalOpener.current
+          if (opener?.isConnected) opener.focus()
+          projectRemovalOpener.current = null
+        }}
+      >
         {projectRemoval && <p>
           {projectRemoval.taskCount === 1
             ? 'La tâche de ce projet sera supprimée.'
