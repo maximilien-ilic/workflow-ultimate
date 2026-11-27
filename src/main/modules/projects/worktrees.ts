@@ -97,7 +97,8 @@ export async function createWorktree(
     await mkdir(path)
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
-    if (code !== 'EEXIST') throw error
+    if (code !== 'EEXIST' && code !== 'ENAMETOOLONG') throw error
+    // Avec le suffixe de mkdtemp, 80 unités UTF-16 tiennent encore dans 255 octets UTF-8.
     path = await mkdtemp(join(realParent, `${name.slice(0, 80)}-`))
   }
   const create = opts.create ?? !(await branchExists(repo, opts.branch))
