@@ -75,6 +75,24 @@ it('publie la transition avec le terminal associé et ignore les états répét�
   )
 })
 
+it('nettoie une session terminée et permet sa reprise si le callback desktop échoue', async () => {
+  spawn.mockResolvedValue(1)
+  const terminalId = crypto.randomUUID()
+  const { id } = await call('agents:start', { terminalId, cwd: dir, agent: 'claude-code', ...size }) as { id: string }
+  onStateChange.mockImplementationOnce(() => { throw new Error('Notification indisponible') })
+  const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  try {
+    expect(() => terminalExited(terminalId, 0)).not.toThrow()
+    expect(agents.sessionAgent(id)).toBeUndefined()
+    await expect(call('agents:resume', { sessionId: id, terminalId, ...size })).resolves.toMatchObject({
+      id, terminalId, state: 'starting',
+    })
+    expect(log).toHaveBeenCalled()
+  } finally {
+    log.mockRestore()
+  }
+})
+
 it('attache la sortie dans la fenêtre principale même si l’agent du lanceur termine avant la réponse', async () => {
   const terminalId = crypto.randomUUID()
   const mainContents = { send: vi.fn(), isDestroyed: () => false }
