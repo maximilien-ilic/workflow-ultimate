@@ -45,6 +45,8 @@ test('les commentaires persistent et arrivent dans le PTY en un seul message', a
       await expect(comments.getByText(message, { exact: false })).toBeVisible()
     }
     const lineInput = comments.getByLabel('Ligne', { exact: true })
+    // Le calcul du diff aligne les deux panneaux et décale la ligne supprimée.
+    await expect(review.locator('.editor.original .line-delete').first()).toBeVisible()
     await review.locator('.editor.original .view-line').filter({ hasText: /supprimer/ })
       .click({ position: { x: 10, y: 7 } })
     await expect(lineInput).toHaveValue('2')

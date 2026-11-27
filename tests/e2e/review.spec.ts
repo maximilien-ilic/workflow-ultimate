@@ -127,7 +127,10 @@ test('le diff suit la sélection dans la barre latérale et le worktree du termi
 
     await main.click()
     await page.getByRole('button', { name: 'Terminal dans proj' }).click()
+    // Après le chargement différé, xterm prend le focus à l’ouverture de son onglet.
+    await expect(page.getByRole('textbox', { name: 'Terminal input' })).toBeFocused()
     await branch.click()
+    await expect(branch).toHaveAttribute('aria-selected', 'true')
     await page.keyboard.press('Control+Shift+P')
     await page.getByRole('option', { name: /Voir le diff du worktree/ }).click()
     await expect(files).toHaveText('A secondaire.txt')

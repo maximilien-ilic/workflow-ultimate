@@ -209,7 +209,9 @@ export function ReviewView({ projectId, worktreePath }: { projectId?: string; wo
           }
           if (side === defaultSide) setAnchor({ file, side, line: 1, maxLine })
           cursorListeners.push(
-            pane.onDidChangeCursorPosition(({ position }) => selectLine(position.lineNumber)),
+            pane.onDidChangeCursorPosition(({ position }) => {
+              if (pane.hasTextFocus()) selectLine(position.lineNumber)
+            }),
             pane.onDidFocusEditorText(() => selectLine(pane.getPosition()?.lineNumber ?? 1)),
             pane.onMouseDown(({ target: { position } }) => {
               if (position) selectLine(position.lineNumber)
