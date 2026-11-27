@@ -18,6 +18,8 @@ export function App() {
   useEffect(() => {
     window.wu.invoke('app:info', {}).then(setInfo, (e: unknown) => setError(String(e)))
   }, [])
+  const { refresh } = workspace
+  useEffect(() => window.wu.onTaskAgentStarted(() => void refresh()), [refresh])
   const selection = workspace.selected
   return (
     <ShellLayout

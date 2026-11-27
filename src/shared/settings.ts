@@ -5,18 +5,38 @@ import { defaultSettings, maxPanelWidth, minPanelWidth } from './layout-defaults
 const width = z.number().int().min(minPanelWidth).max(maxPanelWidth)
 const panel = z.strictObject({ width, visible: z.boolean() })
 const layout = z.strictObject({ left: panel, right: panel })
-const keybindings = z
-  .record(
-    z.string().regex(/^[a-z0-9.-]{1,80}$/),
-    z
-      .string()
-      .max(40)
-      .refine((value) => normalizeKeybinding(value) === value),
-  )
-  .refine((overrides) => {
-    const effective = [paletteKeybinding, ...Object.values({ ...panelCommandBindings, ...overrides })]
-    return new Set(effective).size === effective.length
-  }, 'Raccourcis en conflit')
+const keybindingOverrides = z.record(
+  z.string().regex(/^[a-z0-9.-]{1,80}$/),
+  z
+    .string()
+    .max(40)
+    .refine((value) => normalizeKeybinding(value) === value),
+)
+const keybindings = keybindingOverrides.refine((overrides) => {
+  const effective = [paletteKeybinding, ...Object.values({ ...panelCommandBindings, ...overrides })]
+  return new Set(effective).size === effective.length
+}, 'Raccourcis en conflit')
+
+const panelDefaults = new Map<string, string>(Object.entries(panelCommandBindings))
+const storedKeybindings = keybindingOverrides
+  .transform((overrides) => {
+    const compatible = { ...overrides }
+    let reserved = new Set([paletteKeybinding])
+    while (reserved.size > 0) {
+      const restoredDefaults = new Set<string>()
+      for (const [command, binding] of Object.entries(compatible)) {
+        if (!reserved.has(binding)) continue
+        delete compatible[command]
+        // Un raccourci par défaut restauré peut déjà être utilisé par une autre action.
+        const fallback = panelDefaults.get(command)
+        if (fallback) restoredDefaults.add(fallback)
+      }
+      reserved = restoredDefaults
+    }
+    return compatible
+  })
+  .pipe(keybindings)
+
 const orcaImport = z.strictObject({
   seen: z.boolean(),
   workspaces: z
@@ -32,7 +52,9 @@ export const settingsSchema = z.strictObject({
   orcaImport: orcaImport.optional(),
 })
 export type Settings = z.output<typeof settingsSchema>
-export type StoredSettings = Settings & { notificationSound?: boolean }
+export const DEFAULT_AGENT_CONCURRENCY = 3
+export const agentConcurrency = z.int().positive()
+export type StoredSettings = Settings & { notificationSound?: boolean; maxConcurrentAgents?: number }
 
 function storedPanel(defaults: Settings['layout']['left']) {
   return z
@@ -48,9 +70,10 @@ const storedSettings = z
         right: storedPanel(defaultSettings.layout.right),
       })
       .catch(defaultSettings.layout),
-    keybindings: keybindings.catch({}).default({}),
+    keybindings: storedKeybindings.catch({}).default({}),
     orcaImport: orcaImport.optional().catch(undefined),
     notificationSound: z.boolean().optional().catch(undefined),
+    maxConcurrentAgents: agentConcurrency.optional().catch(undefined),
   })
   .catch(defaultSettings)
 

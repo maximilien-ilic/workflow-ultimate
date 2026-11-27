@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { taskStatuses, type Task, type TaskStatus } from '../../../shared/ipc'
+import { taskStatuses, type Task, type TaskQueue, type TaskStatus } from '../../../shared/ipc'
 import { registerCommand } from '../palette/commands'
+import { TaskDispatchForm, type SendTask } from './TaskDispatchForm'
+import { TaskQueuePanel } from './TaskQueuePanel'
 import './task-board.css'
 
 type Draft = Pick<Task, 'title' | 'body'>
@@ -57,9 +59,9 @@ function TaskForm({ task, onSave, onClose }: { task?: Task; onSave: SaveDraft; o
   )
 }
 
-type CardProps = { task: Task; lastMove: Move | null; onMove: (direction: Direction) => void; onSave: SaveDraft }
+type CardProps = { task: Task; lastMove: Move | null; onMove: (direction: Direction) => void; onSave: SaveDraft; onSend: SendTask; queued: boolean }
 
-function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
+function TaskCard({ task, lastMove, onMove, onSave, onSend, queued }: CardProps) {
   const [editing, setEditing] = useState(false)
   const [editorCloseFocus, setEditorCloseFocus] = useState<boolean | null>(null)
   const closeEditor = (restoreFocus: boolean) => {
@@ -91,6 +93,7 @@ function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
       {moveButton(-1)}
       <button type="button" autoFocus={focusEdit} onClick={() => setEditing(true)} aria-label={`Éditer « ${task.title} »`}>Éditer</button>
       {moveButton(1)}
+      {task.status === 'todo' && !queued && <TaskDispatchForm send={onSend} />}
     </li>
   )
 }
@@ -99,6 +102,7 @@ function TaskCard({ task, lastMove, onMove, onSave }: CardProps) {
 export function TaskBoard({ projectId }: { projectId: string | undefined }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [tasks, setTasks] = useState<Task[]>([])
+  const [queue, setQueue] = useState<TaskQueue | null>(null)
   const [error, setError] = useState('')
   const [lastMove, setLastMove] = useState<Move | null>(null)
 
@@ -119,9 +123,21 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
     void apply(window.wu.invoke('tasks:importIssues', { projectId: id })).finally(() => setImporting(false))
   }, [apply])
 
+  const updateQueue = useCallback((request: Promise<TaskQueue>) => {
+    void request.then(setQueue, (reason: unknown) => setError(String(reason)))
+  }, [])
+
+  useEffect(() => window.wu.onTasksChanged((change) => {
+    setQueue(change.queue)
+    if (!projectId || change.projectId !== projectId || !dialog.current?.open) return
+    if (change.error) setError(change.error)
+    void window.wu.invoke('tasks:list', { projectId }).then(setTasks, (reason: unknown) => setError(String(reason)))
+  }), [projectId])
+
   useEffect(() => {
     const showBoard = (load: (id: string) => void) => {
       if (!dialog.current?.open) dialog.current?.showModal()
+      updateQueue(window.wu.invoke('tasks:queue', {}))
       if (projectId) load(projectId)
     }
     const removeBoard = registerCommand({
@@ -139,7 +155,7 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
       removeBoard()
       removeImport()
     }
-  }, [projectId, apply, importIssues])
+  }, [projectId, apply, importIssues, updateQueue])
 
   const move = (task: Task, direction: Direction) => {
     const status = neighbour(task.status, direction)
@@ -165,12 +181,15 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
           <h3>{columnTitles[status]}</h3>
           <ul>
             {tasks.filter((task) => task.status === status).map((task) => (
-              <TaskCard key={task.id} task={task} lastMove={lastMove} onMove={(direction) => move(task, direction)}
+              <TaskCard key={task.id} task={task} lastMove={lastMove}
+                queued={queue?.pending.some(({ id }) => id === task.id) ?? false} onMove={(direction) => move(task, direction)}
+                onSend={(agent) => apply(window.wu.invoke('tasks:dispatch', { projectId, id: task.id, agent }))}
                 onSave={(draft) => apply(window.wu.invoke('tasks:update', { projectId, id: task.id, ...draft }))} />
             ))}
           </ul>
         </section>
       ))}</div>}
+      {queue && <TaskQueuePanel queue={queue} update={updateQueue} />}
       <button type="button" onClick={() => dialog.current?.close()}>Fermer</button>
     </dialog>
   )

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { defaultSettings } from '../../../shared/layout-defaults'
-import { decodeSettings, type Settings, type StoredSettings } from '../../../shared/settings'
+import { DEFAULT_AGENT_CONCURRENCY, decodeSettings, type Settings, type StoredSettings } from '../../../shared/settings'
 import { handle } from './ipc'
 import { appDirectory } from './paths'
 
@@ -43,6 +43,15 @@ export function notificationSound(): boolean {
 export function setNotificationSound(enabled: boolean): void {
   const file = settingsFile()
   writeSettings(file, { ...readSettings(file), notificationSound: enabled })
+}
+
+export function readAgentConcurrency(): number {
+  return readSettings(settingsFile()).maxConcurrentAgents ?? DEFAULT_AGENT_CONCURRENCY
+}
+
+export function saveAgentConcurrency(max: number): void {
+  const file = settingsFile()
+  writeSettings(file, { ...readSettings(file), maxConcurrentAgents: max })
 }
 
 export function saveOrcaImport(workspaces?: string): void {

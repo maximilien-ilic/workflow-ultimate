@@ -4,7 +4,7 @@ import type { Task, TaskStatus } from '../../../shared/ipc'
 type TaskDraft = Pick<Task, 'title' | 'body'>
 export type IssueTask = Omit<Task, 'id' | 'issueNumber' | 'issueUrl'> & { issueNumber: number; issueUrl: string }
 
-const TASK_COLUMNS = 'id, title, body, status, issue_number AS issueNumber, issue_url AS issueUrl'
+export const taskColumns = 'id, title, body, status, issue_number AS issueNumber, issue_url AS issueUrl'
 
 // Le renderer désigne une tâche par son id : on refuse celle d'un autre projet comme une inconnue.
 function expectOneTask({ changes }: StatementResultingChanges, id: number): void {
@@ -12,9 +12,9 @@ function expectOneTask({ changes }: StatementResultingChanges, id: number): void
 }
 
 export function createTasks(db: DatabaseSync) {
-  const select = db.prepare(`SELECT ${TASK_COLUMNS} FROM tasks WHERE project_id = ? ORDER BY id`)
+  const select = db.prepare(`SELECT ${taskColumns} FROM tasks WHERE project_id = ? ORDER BY id`)
   const insert = db.prepare(
-    `INSERT INTO tasks (project_id, title, body, status) VALUES (?, ?, ?, 'todo') RETURNING ${TASK_COLUMNS}`,
+    `INSERT INTO tasks (project_id, title, body, status) VALUES (?, ?, ?, 'todo') RETURNING ${taskColumns}`,
   )
   const edit = db.prepare('UPDATE tasks SET title = ?, body = ? WHERE id = ? AND project_id = ?')
   const setStatus = db.prepare('UPDATE tasks SET status = ? WHERE id = ? AND project_id = ?')

@@ -6,6 +6,8 @@ import type {
   IpcChannel,
   IpcRequest,
   IpcResponse,
+  TaskAgentStarted,
+  TasksChanged,
   TerminalEvent,
 } from '../shared/ipc'
 
@@ -25,6 +27,16 @@ const api = {
   },
   onAgentDesktopEvent: (listener: (event: AgentDesktopEvent) => void): void => {
     ipcRenderer.on('agents:desktop', (_event, event: AgentDesktopEvent) => listener(event))
+  },
+  onTasksChanged: (listener: (event: TasksChanged) => void): (() => void) => {
+    const wrapped = (_: unknown, event: TasksChanged) => listener(event)
+    ipcRenderer.on('tasks:changed', wrapped)
+    return () => ipcRenderer.removeListener('tasks:changed', wrapped)
+  },
+  onTaskAgentStarted: (listener: (event: TaskAgentStarted) => void): (() => void) => {
+    const wrapped = (_: unknown, event: TaskAgentStarted) => listener(event)
+    ipcRenderer.on('tasks:agentStarted', wrapped)
+    return () => ipcRenderer.removeListener('tasks:agentStarted', wrapped)
   },
   onQuickAgentStarted: (listener: (session: QuickAgentStarted) => void): void => {
     ipcRenderer.on('agents:quickStarted', (_event, session: QuickAgentStarted) => listener(session))

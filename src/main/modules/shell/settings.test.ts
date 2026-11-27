@@ -34,6 +34,27 @@ describe('settings', () => {
     })
   })
 
+  it('conserve les raccourcis compatibles quand le profil utilisait le raccourci de la palette', () => {
+    const compatible = { 'shell.toggle-right': 'Ctrl+Shift+R' }
+    const keybindings = { 'shell.toggle-left': 'Ctrl+Shift+P', ...compatible }
+    writeFileSync(file, JSON.stringify({ ...defaultSettings, keybindings }))
+
+    expect(readSettings(file).keybindings).toEqual(compatible)
+    expect(settingsSchema.safeParse({ ...defaultSettings, keybindings }).success).toBe(false)
+  })
+
+  it('écarte aussi les raccourcis en conflit avec les valeurs par défaut restaurées', () => {
+    const compatible = { 'projects.switch': 'Ctrl+Shift+R' }
+    const keybindings = {
+      'shell.toggle-left': 'Ctrl+Shift+P',
+      'shell.toggle-right': 'Ctrl+Shift+B',
+      ...compatible,
+    }
+    writeFileSync(file, JSON.stringify({ ...defaultSettings, keybindings }))
+
+    expect(readSettings(file).keybindings).toEqual(compatible)
+  })
+
   it('restaure les valeurs par défaut pour un fichier absent ou invalide', () => {
     expect(readSettings(file)).toEqual(defaultSettings)
     writeFileSync(file, '{')

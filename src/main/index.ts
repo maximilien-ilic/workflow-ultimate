@@ -66,7 +66,10 @@ void app.whenReady().then(async () => {
         ? join(process.resourcesPath, 'wu-notify')
         : join(__dirname, '../../resources/wu-notify'),
     },
-    onStateChange: (session) => onAgentStateChange(session),
+    onStateChange: (session) => {
+      onAgentStateChange(session)
+      if (session.state === 'done') tasks.refresh()
+    },
     socketPath: socketPath ?? '',
     bins: {
       'claude-code': process.env['WU_CLAUDE_BIN'] || 'claude',
@@ -74,7 +77,7 @@ void app.whenReady().then(async () => {
     },
   })
   registerReviewHandlers(db, agents)
-  registerTaskHandlers(db)
+  const tasks = registerTaskHandlers(db, agents)
   const socket = socketPath
     ? await startAgentSocket({
         path: socketPath,
@@ -84,6 +87,7 @@ void app.whenReady().then(async () => {
     : undefined
 
   app.on('will-quit', () => {
+    tasks.close()
     void socket?.close()
     ptyHost.stop()
     db.close()

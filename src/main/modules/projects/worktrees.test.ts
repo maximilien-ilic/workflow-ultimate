@@ -68,7 +68,7 @@ describe('worktrees', () => {
     mkdirSync(join(workspaces, 'app'), { recursive: true })
     git(repo, 'worktree', 'add', '-b', 'feat/sujet', existing)
 
-    const created = await createWorktree(repo, workspaces, { branch: 'feat-sujet', create: true })
+    const created = await createWorktree(repo, workspaces, { branch: 'feat-sujet' })
 
     expect(created).not.toBe(existing)
     expect(await listWorktrees(repo)).toEqual(
