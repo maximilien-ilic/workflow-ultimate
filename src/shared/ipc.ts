@@ -152,6 +152,7 @@ export const ipcRequestSchemas = {
     })
     .strict(),
   'tasks:queue': z.strictObject({}),
+  'tasks:dispatchFailures': z.object({ projectId: z.uuid() }).strict(),
   'tasks:reorderQueue': z.strictObject({ id: taskId, direction: z.union([z.literal(-1), z.literal(1)]) }),
   'settings:setAgentConcurrency': z.strictObject({ max: agentConcurrency }),
   'tasks:dispatch': z.strictObject({ projectId: z.uuid(), id: taskId, agent: agentKind }),
@@ -280,6 +281,7 @@ interface IpcResponses {
   'review:sendComments': ReviewComment[]
   'review:createPr': { url: string }
   'tasks:queue': TaskQueue
+  'tasks:dispatchFailures': { id: number; message: string }[]
   'tasks:reorderQueue': TaskQueue
   'settings:setAgentConcurrency': TaskQueue
   'tasks:dispatch': Task[]
