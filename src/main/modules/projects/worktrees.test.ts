@@ -80,6 +80,23 @@ describe('worktrees', () => {
     expect(git(existing, 'branch', '--show-current').trim()).toBe('feat/sujet')
   })
 
+  it('conserve les noms de branches longs en ASCII et en UTF-8 avec un préfixe commun', async () => {
+    const prefix = 'é'.repeat(70)
+    const branches = [
+      `${'a'.repeat(130)}/${'b'.repeat(130)}`,
+      `${prefix}/${'x'.repeat(130)}`,
+      `${prefix}/${'y'.repeat(130)}`,
+    ]
+    const destinations = []
+    for (const branch of branches) {
+      expect(Buffer.byteLength(branch.replaceAll('/', '-'))).toBeGreaterThan(255)
+      const path = await createWorktree(repo, workspaces, { branch })
+      expect(git(path, 'branch', '--show-current').trim()).toBe(branch)
+      destinations.push(path)
+    }
+    expect(new Set(destinations).size).toBe(branches.length)
+  })
+
   it('crée simultanément une branche homonyme dans deux dépôts de même nom', async () => {
     const otherRepo = join(dir, 'autre', 'app')
     git(dir, 'clone', repo, otherRepo)
