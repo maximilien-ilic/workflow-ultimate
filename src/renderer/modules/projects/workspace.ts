@@ -36,7 +36,7 @@ function readRecent(): string[] {
   return []
 }
 
-export function useWorkspace() {
+export function useWorkspace({ followSelection = false } = {}) {
   const [groups, setGroups] = useState<ProjectGroup[]>([])
   const [path, setPath] = useState<string>()
   const [recent, setRecent] = useState(readRecent)
@@ -48,12 +48,27 @@ export function useWorkspace() {
   }, [])
 
   useEffect(() => {
+    if (followSelection) return
     try {
       localStorage.setItem(recentKey, JSON.stringify(recent))
     } catch {
       // Le classement reste accessible tant que la fenêtre est ouverte.
     }
-  }, [recent])
+  }, [followSelection, recent])
+
+  useEffect(() => {
+    if (!followSelection) return
+    const sync = () => setRecent(readRecent())
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === recentKey || event.key === null) sync()
+    }
+    window.addEventListener('storage', onStorage)
+    window.addEventListener('focus', sync)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('focus', sync)
+    }
+  }, [followSelection])
 
   function expand(id: string, expanded: boolean) {
     setCollapsed((previous) => {
