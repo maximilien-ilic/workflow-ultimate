@@ -35,7 +35,7 @@ beforeEach(() => {
   db.prepare('INSERT INTO projects (id, path, git_dir, name, added_at) VALUES (?, ?, ?, ?, ?)').run(
     projectId, '/repo', '/repo/.git', 'repo', 0,
   )
-  tasks = registerTaskHandlers(db, { start: vi.fn(), activeCount: () => 0, onSlotAvailable: vi.fn() })
+  tasks = registerTaskHandlers(db, { start: vi.fn(), isOpen: () => false, activeCount: () => 0, onSlotAvailable: vi.fn() })
 })
 afterEach(() => { tasks.close(); db.close() })
 

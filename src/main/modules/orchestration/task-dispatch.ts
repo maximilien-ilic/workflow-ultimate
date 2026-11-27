@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { WebContents } from 'electron'
 import {
   maxAgentPromptLength,
+  type AgentState,
   type IpcRequest,
   type Task,
   type TaskAgentStarted,
@@ -14,21 +15,25 @@ import { branchForLocalTask, createWorktree, issueBranch, listWorktrees } from '
 import { taskColumns } from './tasks'
 
 type DispatchRequest = IpcRequest<'tasks:dispatch'>
-type DispatchTask = Task & { branch: string | null; sessionId: string | null }
+type DispatchTask = Task & { branch: string | null; sessionId: string | null; sessionState: AgentState | null }
 const terminalSize = { cols: 120, rows: 30 }
 const taskInstructions = 'Lis AGENTS.md avant de commencer.\nSpécification : [docs/SPEC.md](docs/SPEC.md)'
 
-export function readDispatchTask(db: DatabaseSync, { projectId, id }: DispatchRequest): DispatchTask {
+export function readDispatchTask(
+  db: DatabaseSync, { projectId, id }: DispatchRequest, isOpen: AgentSessions['isOpen'],
+): DispatchTask {
   const task = db
     .prepare(
       `
-    SELECT ${taskColumns}, agent_branch AS branch, agent_session_id AS sessionId
+    SELECT ${taskColumns}, agent_branch AS branch, agent_session_id AS sessionId,
+           (SELECT state FROM agent_sessions WHERE id = tasks.agent_session_id) AS sessionState
     FROM tasks WHERE project_id = ? AND id = ?
   `,
     )
     .get(projectId, id) as DispatchTask | undefined
   if (!task) throw new Error(`Tâche inconnue (${id})`)
-  if (task.status !== 'todo' || task.sessionId) throw new Error('Cette tâche a déjà été prise en charge.')
+  const canReplace = !task.sessionId || (task.sessionState === 'error' && !isOpen(task.sessionId))
+  if (task.status !== 'todo' || !canReplace) throw new Error('Cette tâche a déjà été prise en charge.')
   return task
 }
 
@@ -85,27 +90,38 @@ function linkSession(db: DatabaseSync, { id, projectId }: DispatchRequest, sessi
       .prepare(
         `
     UPDATE tasks SET agent_session_id = ?, status = CASE WHEN status = 'todo' THEN 'doing' ELSE status END
-    WHERE id = ? AND project_id = ?
+    WHERE id = ? AND project_id = ? AND agent_session_id IS NULL
   `,
       )
       .run(sessionId, id, projectId).changes,
   )
 }
 
-export function createTaskDispatch(db: DatabaseSync, agents: Pick<AgentSessions, 'start'>) {
+export function createTaskDispatch(db: DatabaseSync, agents: Pick<AgentSessions, 'start' | 'isOpen'>) {
   return async (request: DispatchRequest, owner: WebContents, hasSlot: () => boolean): Promise<boolean> => {
-    const task = readDispatchTask(db, request)
+    const task = readDispatchTask(db, request, agents.isOpen)
     const repo = await checkedProjectPath(db, request.projectId)
     const branch = await taskBranch(repo, task)
     reserveBranch(db, request, branch)
     const cwd = await worktreeForBranch(repo, branch)
     if (!hasSlot()) return false
     if (owner.isDestroyed()) throw new Error('La fenêtre qui a demandé l’envoi est fermée.')
+    // La préparation du worktree a pu laisser le temps de reprendre l’ancienne session.
+    const current = readDispatchTask(db, request, agents.isOpen)
+    const previous = current.sessionId
+    const setSession = db.prepare(
+      'UPDATE tasks SET agent_session_id = ? WHERE id = ? AND project_id = ? AND agent_session_id IS ?',
+    )
+    if (previous && !setSession.run(null, request.id, request.projectId, previous).changes)
+      throw new Error('La session de la tâche a changé pendant la préparation.')
     const terminalId = randomUUID()
     const session = await agents.start(
-      { cwd, agent: request.agent, terminalId, prompt: buildPrompt(task), ...terminalSize },
+      { cwd, agent: request.agent, terminalId, prompt: buildPrompt(current), ...terminalSize },
       owner,
-    )
+    ).catch((error: unknown) => {
+      if (previous) setSession.run(previous, request.id, request.projectId, null)
+      throw error
+    })
     const linked = linkSession(db, request, session.id)
     showTaskAgent(owner, { session, terminalId, branch })
     if (!linked) throw new Error('La tâche a été supprimée pendant le lancement.')
