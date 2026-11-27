@@ -16,7 +16,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "dist": "npm run build && electron-builder --linux --publish never"
+    "dist": "npm run build && electron-builder --linux --publish never",
+    "bench:startup": "npm run build && node scripts/bench-startup.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

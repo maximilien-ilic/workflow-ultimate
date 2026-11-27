@@ -1,11 +1,12 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { lazy, Suspense, useEffect, useSyncExternalStore } from 'react'
 import { AgentHeader } from '../agents/AgentHeader'
 import { agentStore, stateLabel } from '../agents/agent-store'
 import { paneIds } from './pane-tree'
 import type { PaneTree } from './pane-tree'
 import { terminalStore, type Tab } from './terminal-store'
-import { TerminalView } from './TerminalView'
 import './terminals.css'
+
+const TerminalView = lazy(() => import('./TerminalView').then(({ TerminalView }) => ({ default: TerminalView })))
 
 function Panes({
   tab,
@@ -101,7 +102,9 @@ export function TerminalArea() {
           {agentStore.get(tab.activePane) && (
             <AgentHeader terminalId={tab.activePane} info={agentStore.get(tab.activePane)!} cwd={tab.cwd} />
           )}
-          <Panes tab={tab} tree={tab.tree} visible={tab.id === activeTab} focusRequest={focusRequest} />
+          <Suspense fallback={null}>
+            <Panes tab={tab} tree={tab.tree} visible={tab.id === activeTab} focusRequest={focusRequest} />
+          </Suspense>
         </div>
       ))}
     </section>

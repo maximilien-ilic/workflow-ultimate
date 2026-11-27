@@ -109,6 +109,7 @@ npm run lint         # eslint . (+ --fix)
 npm test             # vitest run
 npm run test:e2e     # playwright test (Electron)
 npm run build        # build de production
+npm run bench:startup # mesure le démarrage de cinq processus neufs avec des profils isolés
 npm run dist         # AppImage + pacman dans dist/
 ```
 
