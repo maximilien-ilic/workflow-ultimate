@@ -13,7 +13,7 @@ test.afterEach(() => rmSync(dir, { recursive: true, force: true }))
 // xterm dessine en WebGL (canvas) : on lit le texte affiché via l'accesseur en lecture seule du renderer.
 const screenOf = (page: Page, id: string) =>
   page.evaluate(
-    (id) => (window as unknown as { __wuTerminalText: (id: string) => string }).__wuTerminalText(id),
+    (id) => (window as unknown as { __wuTerminalText?: (id: string) => string }).__wuTerminalText?.(id) ?? '',
     id,
   )
 
@@ -42,7 +42,10 @@ test('restaure les volets, leur historique borné et le dossier courant après a
     const page = await app.firstWindow()
     await page.evaluate((path) => window.wu.invoke('projects:add', { path }), repo)
     await page.reload()
-    await page.getByRole('button', { name: 'Terminal dans projet' }).click()
+    const openTerminal = page.getByRole('button', { name: 'Terminal dans projet' })
+    await expect(openTerminal).toBeVisible()
+    expect(await page.evaluate(() => '__wuTerminalText' in window)).toBe(false)
+    await openTerminal.click()
     const hosts = page.locator('.terminal-host')
     first = (await hosts.first().getAttribute('data-terminal-id'))!
     await hosts.first().click()

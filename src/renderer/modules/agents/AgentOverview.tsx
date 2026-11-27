@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { registerCommand } from '../palette/commands'
 import { terminalStore } from '../terminals/terminal-store'
-import { lastLines } from '../terminals/TerminalView'
+import { lastLines } from '../terminals/terminal-instances'
 import { agentStore, stateLabel } from './agent-store'
 import { nextWaiting, sortForOverview } from './overview'
 
