@@ -26,6 +26,9 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
   const [busy, setBusy] = useState(false)
   const [removal, setRemoval] = useState<{ target: WorktreeSelection; files: number }>()
   const confirmation = useRef<HTMLDialogElement>(null)
+  const [projectRemoval, setProjectRemoval] = useState<{ project: Project; taskCount: number }>()
+  const projectConfirmation = useRef<HTMLDialogElement>(null)
+  const projectRemovalOpener = useRef<HTMLButtonElement>(null)
   const rows: Row[] = groups.flatMap(({ project, worktrees }) => [
     { key: project.id, project },
     ...(collapsed.has(project.id)
@@ -142,9 +145,17 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
     })
   }
 
-  function removeProject(project: Project) {
+  function removeProject(project: Project, confirmedTaskCount?: number) {
     void run(async () => {
-      await window.wu.invoke('projects:remove', { id: project.id })
+      const { removed, taskCount } = await window.wu.invoke('projects:removeChecked', {
+        id: project.id, confirmedTaskCount,
+      })
+      if (!removed) {
+        setProjectRemoval({ project, taskCount })
+        if (!projectConfirmation.current?.open) projectConfirmation.current?.showModal()
+        return
+      }
+      projectConfirmation.current?.close()
       await refresh()
     })
   }
@@ -228,7 +239,10 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
                   {project.name} · {error}
                 </p>
               )}
-              <button type="button" disabled={busy} onClick={() => removeProject(project)}>
+              <button type="button" disabled={busy} onClick={(event) => {
+                projectRemovalOpener.current = event.currentTarget
+                removeProject(project)
+              }}>
                 Retirer {project.name}
               </button>
             </div>
@@ -279,7 +293,10 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
             type="button"
             disabled={busy}
             aria-label={`Retirer ${selected.project.name}`}
-            onClick={() => removeProject(selected.project)}
+            onClick={(event) => {
+              projectRemovalOpener.current = event.currentTarget
+              removeProject(selected.project)
+            }}
           >
             Retirer le projet
           </button>
@@ -298,6 +315,32 @@ export function ProjectSidebar({ workspace }: { workspace: Workspace }) {
           )}
         </div>
       )}
+      <dialog
+        ref={projectConfirmation}
+        aria-label={`Retirer le projet ${projectRemoval?.project.name ?? ''}`}
+        onClose={() => {
+          const opener = projectRemovalOpener.current
+          if (opener?.isConnected) opener.focus()
+          projectRemovalOpener.current = null
+        }}
+      >
+        {projectRemoval && <p>
+          {projectRemoval.taskCount === 1
+            ? 'La tâche de ce projet sera supprimée.'
+            : `Les ${projectRemoval.taskCount} tâches de ce projet seront supprimées.`}
+        </p>}
+        {messages.length > 0 && <p role="alert">{messages.join('\n')}</p>}
+        <button type="button" autoFocus onClick={() => projectConfirmation.current?.close()}>
+          Annuler
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => projectRemoval && removeProject(projectRemoval.project, projectRemoval.taskCount)}
+        >
+          Retirer le projet et ses tâches
+        </button>
+      </dialog>
       <dialog ref={confirmation} aria-label="Supprimer le worktree">
         <p>{removal?.files} fichier(s) avec des changements seront perdus.</p>
         {messages.length > 0 && <p role="alert">{messages.join('\n')}</p>}
