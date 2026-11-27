@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { panelCommandBindings } from '../../../shared/keybindings'
 import { maxPanelWidth, minPanelWidth } from '../../../shared/layout-defaults'
 import type { Settings } from '../../../shared/settings'
@@ -6,8 +6,11 @@ import { CommandPalette } from '../palette/CommandPalette'
 import { registerCommand } from '../palette/commands'
 import { Diagnostics } from './Diagnostics'
 import { KdeTheme } from './KdeTheme'
+import { ThemeButton } from './ThemeButton'
 import { useSettings } from './use-settings'
 import './layout.css'
+
+const DesignSystemDemo = import.meta.env.DEV ? lazy(() => import('./DesignSystemDemo')) : null
 
 type Side = keyof Settings['layout']
 const panelNames = { left: 'Barre latérale', right: 'Contexte' }
@@ -190,10 +193,12 @@ export function ShellLayout({
             }))
           }
         />
+        <ThemeButton />
         <KdeTheme controls />
       </div>
       {error && <p role="alert">{error}</p>}
       <Diagnostics />
+      {DesignSystemDemo && <Suspense><DesignSystemDemo /></Suspense>}
       <div className="shell-panes">
         {layout.left.visible && panel('left', leftPanel)}
         <div className="shell-center">{children}</div>
