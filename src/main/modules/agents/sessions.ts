@@ -73,7 +73,11 @@ export function registerAgentHandlers(
         state,
       } satisfies AgentEvent)
     if (state === 'done' || state === 'error') notifyAvailable()
-    opts.onStateChange?.(toSession({ ...current, state, updated_at: updatedAt }))
+    try {
+      opts.onStateChange?.(toSession({ ...current, state, updated_at: updatedAt }))
+    } catch (error) {
+      console.warn('Impossible de publier le nouvel état de l’agent :', error)
+    }
   }
 
   terminals.onExit((terminalId, exitCode) => {
