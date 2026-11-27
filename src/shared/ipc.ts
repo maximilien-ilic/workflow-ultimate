@@ -68,6 +68,7 @@ export const ipcRequestSchemas = {
   'settings:set': settingsSchema,
   'worktrees:list': z.object({ projectId: z.uuid() }).strict(),
   'worktrees:status': z.object({ projectId: z.uuid() }).strict(),
+  'worktrees:snapshot': z.object({ projectId: z.uuid() }).strict(),
   'worktrees:create': z
     .object({ projectId: z.uuid(), branch: z.string().min(1).max(maxWorktreeBranchLength), create: z.boolean() })
     .strict(),
@@ -239,6 +240,7 @@ interface IpcResponses {
   'projects:orcaDismiss': null
   'worktrees:list': Worktree[]
   'worktrees:status': { path: string; status: GitStatus | null }[]
+  'worktrees:snapshot': (Worktree & { status: GitStatus | null })[]
   'worktrees:create': string
   'worktrees:createFromIssue': string
   'worktrees:remove': { removed: boolean; dirtyFiles: number }

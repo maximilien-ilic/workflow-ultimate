@@ -78,18 +78,8 @@ export function useWorkspace() {
       const next = await Promise.all(
         projects.map(async (project): Promise<ProjectGroup> => {
           try {
-            const [worktrees, statuses] = await Promise.all([
-              window.wu.invoke('worktrees:list', { projectId: project.id }),
-              window.wu.invoke('worktrees:status', { projectId: project.id }),
-            ])
-            const byPath = new Map(statuses.map(({ path, status }) => [path, status]))
-            return {
-              project,
-              worktrees: worktrees.map((worktree) => ({
-                ...worktree,
-                status: byPath.get(worktree.path) ?? null,
-              })),
-            }
+            const worktrees = await window.wu.invoke('worktrees:snapshot', { projectId: project.id })
+            return { project, worktrees }
           } catch (error) {
             return { project, worktrees: [], error: String(error) }
           }
