@@ -161,7 +161,9 @@ test('annuler le retrait d’un projet conserve sa tâche locale', async () => {
       .toEqual([expect.objectContaining({ title: 'Notes à conserver' })])
 
     await remove.press('Enter')
-    await confirmation.getByRole('button', { name: 'Retirer le projet et ses tâches' }).press('Enter')
+    const confirm = confirmation.getByRole('button', { name: 'Retirer le projet et ses tâches' })
+    await expect(confirm).toBeEnabled()
+    await confirm.press('Enter')
     await expect(page.getByText('Aucun projet.')).toBeVisible()
   } finally {
     await app.close()
