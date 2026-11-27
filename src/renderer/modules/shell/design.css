@@ -1,0 +1,71 @@
+@layer theme, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+@source '../../';
+
+@theme inline {
+  --color-app-bg: var(--bg);
+  --color-app-raised: var(--bg-raised);
+  --color-app-hover: var(--bg-hover);
+  --color-app-border: var(--border);
+  --color-app-fg: var(--fg);
+  --color-app-muted: var(--fg-muted);
+  --color-app-accent: var(--accent);
+  --color-app-ok: var(--ok);
+  --color-app-warn: var(--warn);
+  --color-app-danger: var(--danger);
+  --radius-ui: var(--radius);
+  --spacing: var(--space);
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #0f1115;
+  --bg-raised: #161920;
+  --bg-hover: #1d212a;
+  --border: #262b36;
+  --fg: #e6e8ee;
+  --fg-muted: #8a91a3;
+  --accent: #3daee9;
+  --ok: #3fb950;
+  --warn: #e3b341;
+  --danger: #f85149;
+  --radius: 6px;
+  --space: 4px;
+  background-color: var(--bg);
+  color: var(--fg);
+  accent-color: var(--accent);
+}
+
+:root:is([data-kde-theme='light'], [data-theme='light']:not([data-kde-theme='dark'])) {
+  color-scheme: light;
+  --bg: #f7f8fb;
+  --bg-raised: #fff;
+  --bg-hover: #eceff5;
+  --border: #c4cbd6;
+  --fg: #202734;
+  --fg-muted: #515d70;
+  --accent: #086c9e;
+  --ok: #216c35;
+  --warn: #855200;
+  --danger: #b52624;
+}
+
+body {
+  margin: 0;
+  font: 13px Inter, 'Noto Sans', system-ui, sans-serif;
+}
+
+dialog {
+  background-color: var(--bg-raised);
+  color: var(--fg);
+}
+
+:where(button, input, select, textarea) {
+  font: inherit;
+}
+
+:where(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

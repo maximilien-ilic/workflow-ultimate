@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import tailwind from '@tailwindcss/vite'
 
 // Le main produit deux fichiers : out/main/index.js et out/main/pty-host.js (processus utilitaire).
 export default defineConfig({
@@ -12,5 +13,5 @@ export default defineConfig({
     },
   },
   preload: {},
-  renderer: { plugins: [react()] },
+  renderer: { plugins: [react(), tailwind()] },
 })

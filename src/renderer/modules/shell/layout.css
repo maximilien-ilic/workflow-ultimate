@@ -1,10 +1,5 @@
-body {
-  margin: 0;
-  font-family: system-ui, sans-serif;
-}
-
 .shell {
-  --shell-border: #8888;
+  --shell-border: var(--border);
   display: flex;
   flex-direction: column;
   height: 100dvh;
@@ -58,19 +53,4 @@ body {
   display: inline-flex;
   align-items: center;
   gap: var(--space, 4px);
-}
-
-:root[data-kde-theme] {
-  background-color: var(--bg, Canvas);
-  color: var(--fg, CanvasText);
-  accent-color: var(--accent, auto);
-}
-
-:root[data-kde-theme] dialog {
-  background-color: var(--bg, Canvas);
-  color: var(--fg, CanvasText);
-}
-
-:root[data-kde-theme] :focus-visible {
-  outline-color: var(--accent, Highlight);
 }

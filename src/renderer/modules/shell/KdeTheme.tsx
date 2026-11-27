@@ -56,11 +56,11 @@ export function KdeTheme({ controls = false }: { controls?: boolean }) {
       try {
         const { background, foreground, accent, scheme } = await window.wu.invoke('shell:kdePalette', {})
         if (cancelled) return
-        root.toggleAttribute('data-kde-theme', Boolean(background || accent))
+        if (background || accent) root.dataset.kdeTheme = scheme ?? ''
+        else root.removeAttribute('data-kde-theme')
         setColor('--bg', background)
         setColor('--fg', foreground)
         setColor('--accent', accent)
-        setColor('color-scheme', scheme)
       } catch (error) {
         console.warn('Lecture du thème KDE impossible', error)
       } finally {
@@ -73,7 +73,7 @@ export function KdeTheme({ controls = false }: { controls?: boolean }) {
       cancelled = true
       window.clearInterval(timer)
       root.removeAttribute('data-kde-theme')
-      for (const property of ['--bg', '--fg', '--accent', 'color-scheme']) setColor(property)
+      for (const property of ['--bg', '--fg', '--accent']) setColor(property)
     }
   }, [enabled])
 
