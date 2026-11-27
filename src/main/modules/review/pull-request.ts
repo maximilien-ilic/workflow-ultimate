@@ -103,10 +103,10 @@ export async function readBranchPullRequest(repo: string, branch: string, starte
     return 'MERGED'
 }
 
-async function draftFor(repo: string, branch: string): Promise<PullRequestContext> {
+async function draftFor(repo: string, branch: string, inferIssue: boolean): Promise<PullRequestContext> {
   const [title = branch, ...parts] = (await runGit(repo, ['log', '-1', '--no-merges', '--format=%s%x00%b'])).split('\0')
   const body = parts.join('\0').trim()
-  const issue = /^(?:feat|fix|chore)\/(\d+)(?:-|$)/.exec(branch)?.[1]
+  const issue = inferIssue ? /^(?:feat|fix|chore)\/(\d+)(?:-|$)/.exec(branch)?.[1] : undefined
   const closes = issue && `Closes #${issue}`
   const hasClosingLine = closes && body.split('\n').some((line) => line.trim().toLowerCase() === closes.toLowerCase())
   const description = closes && !hasClosingLine
@@ -115,14 +115,14 @@ async function draftFor(repo: string, branch: string): Promise<PullRequestContex
   return { kind: 'draft', branch, title: (title || branch).slice(0, 256), body: description }
 }
 
-export async function readPullRequest(repo: string): Promise<PullRequestContext> {
+export async function readPullRequest(repo: string, inferIssue: (branch: string) => boolean = () => true): Promise<PullRequestContext> {
   const [branch, remotes] = await Promise.all([currentBranch(repo), runGit(repo, ['remote'])])
   if (!branch) return { kind: 'unavailable', message: 'Sélectionnez un worktree rattaché à une branche.' }
   if (!remotes) return { kind: 'unavailable', message: 'Aucun dépôt distant configuré.' }
   const target = await pullRequestTarget(repo, branch)
   const result = await listBranchPullRequests(repo, target, ['--state=open', '--json', 'number,title,url,state,headRepository'])
   const pr = pullRequest.array().parse(result).find((pr) => pr.state === 'OPEN' && sameRepository(pr, target.repository))
-  if (!pr) return draftFor(repo, branch)
+  if (!pr) return draftFor(repo, branch, inferIssue(branch))
   const { number, title, url, state } = pr
   return { kind: 'existing', number, title, url, state, checks: await readChecks(repo, url) }
 }
