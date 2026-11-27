@@ -1,8 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { checkedProjectPath } from '../projects/registry'
-import { readBranchPullRequest } from '../review/pull-request'
+import { readBranchPullRequest, resolveBranchPullRequestRepository } from '../review/pull-request'
 
 export const TASK_PR_POLL_INTERVAL_MS = 30_000
+const MAX_CONCURRENT_PROJECTS = 4
 
 type Candidate = {
   id: number
@@ -45,28 +46,50 @@ export function createTaskTransitions(db: DatabaseSync, notify: (projectId: stri
   let requested = false
   let running: Promise<void> | undefined
 
-  async function verify(task: Candidate): Promise<void> {
-    const repo = await checkedProjectPath(db, task.projectId)
-    if (closed) return
-    const pr = await readBranchPullRequest(repo, task.branch, task.startedAt)
-    if (closed || !pr) return
-    const next = pr === 'MERGED' ? 'done' : 'review'
-    // La tâche peut être déplacée ou la session reprise pendant la lecture réseau.
-    if (task.status !== next && moveTask(db, task, next)) notify(task.projectId)
+  async function verifyProject([projectId, tasks]: [string, Candidate[]]): Promise<void> {
+    let repo: string
+    let repository: string | undefined
+    try {
+      repo = await checkedProjectPath(db, projectId)
+      if (closed) return
+      repository = await resolveBranchPullRequestRepository(repo)
+    } catch (error) {
+      if (!closed) console.warn(`Dépôt du projet ${projectId} indisponible : ${String(error)}`)
+      return
+    }
+    if (!repository) return
+
+    for (const task of tasks) {
+      if (closed) return
+      try {
+        const pr = await readBranchPullRequest(repo, task.branch, task.startedAt, repository)
+        if (closed || !pr) continue
+        const next = pr === 'MERGED' ? 'done' : 'review'
+        // La tâche peut avoir été déplacée ou la session reprise pendant la lecture réseau.
+        if (task.status !== next && moveTask(db, task, next)) notify(projectId)
+      } catch (error) {
+        if (!closed) console.warn(`État PR de la tâche ${task.id} indisponible : ${String(error)}`)
+      }
+    }
   }
 
   async function reconcile(): Promise<void> {
     while (requested && !closed) {
       requested = false
+      const projects = new Map<string, Candidate[]>()
       for (const task of candidates(db)) {
-        if (closed) return
-        try {
-          await verify(task)
-        } catch (error) {
-          // Le prochain passage retentera les lectures échouées sans écraser l'état local.
-          if (!closed) console.warn(`État PR de la tâche ${task.id} indisponible : ${String(error)}`)
+        const group = projects.get(task.projectId)
+        if (group) group.push(task)
+        else projects.set(task.projectId, [task])
+      }
+      const pending = projects.entries()
+      const scan = async () => {
+        for (const project of pending) {
+          if (closed) break
+          await verifyProject(project)
         }
       }
+      await Promise.all(Array.from({ length: Math.min(projects.size, MAX_CONCURRENT_PROJECTS) }, scan))
     }
   }
 
