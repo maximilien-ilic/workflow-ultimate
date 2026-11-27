@@ -106,6 +106,7 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
   const [error, setError] = useState('')
   const [lastMove, setLastMove] = useState<Move | null>(null)
 
+  const importPending = useRef(false)
   const [importing, setImporting] = useState(false)
 
   const apply = useCallback(async (request: Promise<Task[]>) => {
@@ -119,8 +120,13 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
     }
   }, [])
   const importIssues = useCallback((id: string) => {
+    if (importPending.current) return
+    importPending.current = true
     setImporting(true)
-    void apply(window.wu.invoke('tasks:importIssues', { projectId: id })).finally(() => setImporting(false))
+    void apply(window.wu.invoke('tasks:importIssues', { projectId: id })).finally(() => {
+      importPending.current = false
+      setImporting(false)
+    })
   }, [apply])
 
   const updateQueue = useCallback((request: Promise<TaskQueue>) => {

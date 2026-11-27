@@ -10,6 +10,7 @@ import { createTasks } from './tasks'
 
 export function registerTaskHandlers(db: DatabaseSync, agents: Pick<AgentSessions, 'start' | 'activeCount' | 'onSlotAvailable'>) {
   const tasks = createTasks(db)
+  const imports = new Map<string, Promise<void>>()
   const dispatch = createTaskDispatch(db, agents)
   const queue = registerTaskQueue(agents)
   const transitions = createTaskTransitions(db, queue.notify)
@@ -48,7 +49,12 @@ export function registerTaskHandlers(db: DatabaseSync, agents: Pick<AgentSession
     return listOf(projectId)
   })
   handle('tasks:importIssues', async ({ projectId }) => {
-    await syncIssues(db, projectId)
+    let pending = imports.get(projectId)
+    if (!pending) {
+      pending = syncIssues(db, projectId).finally(() => { imports.delete(projectId) })
+      imports.set(projectId, pending)
+    }
+    await pending
     return tasks.list(projectId)
   })
   return {
