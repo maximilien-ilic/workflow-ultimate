@@ -81,3 +81,47 @@ test('créer un worktree, refuser sa suppression avec des changements, puis le s
   expect(outside).toContain('principal')
   await app.close()
 })
+
+test('la barre latérale suit les changements Git depuis le terminal intégré', async () => {
+  const repo = join(dir, 'app')
+  mkdirSync(repo)
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: repo }).toString().trim()
+  git('init', '-q', '-b', 'main')
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'init')
+
+  const app = await _electron.launch({
+    args: ['out/main/index.js'],
+    env: {
+      ...process.env,
+      HOME: dir,
+      SHELL: '/bin/bash',
+      INPUTRC: '/dev/null',
+      XDG_DATA_HOME: join(dir, 'data'),
+      XDG_CONFIG_HOME: join(dir, 'config'),
+    },
+  })
+  try {
+    const page = await app.firstWindow()
+    await page.evaluate((path) => window.wu.invoke('projects:add', { path }), repo)
+    await page.reload()
+    const tree = page.getByRole('tree', { name: 'Projets et worktrees' })
+    const main = tree.getByRole('treeitem', { name: 'main', exact: true })
+    await expect(main).toContainText('Propre')
+    await page.getByRole('button', { name: 'Terminal dans app' }).click()
+    await page.locator('.terminal-host').click()
+
+    await page.keyboard.type('touch travail.txt\n')
+    await expect.poll(() => existsSync(join(repo, 'travail.txt'))).toBe(true)
+    await expect(main).toContainText('1 non suivi')
+
+    await page.keyboard.type('git switch -c nouvelle-branche\n')
+    const branch = tree.getByRole('treeitem', { name: 'nouvelle-branche', exact: true })
+    await expect(branch).toContainText('1 non suivi')
+
+    await page.keyboard.type('git switch --detach\n')
+    const detached = tree.getByRole('treeitem', { name: `HEAD ${git('rev-parse', '--short=7', 'HEAD')}` })
+    await expect(detached).toContainText('1 non suivi')
+  } finally {
+    await app.close()
+  }
+})
