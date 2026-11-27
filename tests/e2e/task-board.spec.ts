@@ -232,3 +232,35 @@ test('les textes sans espaces restent dans leur colonne du Kanban', async () => 
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('retrouve une tâche au clavier et distingue deux projets avec le même titre', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'wu-e2e-task-palette-')))
+  const { app, page } = await launchWithProject(dir)
+  try {
+    const other = join(dir, 'second-projet')
+    execFileSync('git', ['init', '-q', other])
+    await page.evaluate(async (path) => {
+      await window.wu.invoke('projects:add', { path })
+      const projects = await window.wu.invoke('projects:list', {})
+      for (const { id, name } of projects) await window.wu.invoke('tasks:create', {
+        projectId: id, title: 'Dossier Zéphyr', body: `Détail pour ${name}`,
+      })
+    }, other)
+    await page.reload()
+    await expect(page.getByRole('treeitem', { name: 'second-projet', exact: true })).toBeVisible()
+    await page.keyboard.press('Control+Shift+P')
+    const palette = page.getByRole('dialog', { name: 'Palette de commandes' })
+    const search = palette.getByRole('combobox')
+    await search.fill('Zphyr')
+    await expect(palette.getByRole('option', { name: 'Dossier Zéphyr · proj', exact: true })).toBeVisible()
+    await expect(palette.getByRole('option', { name: 'Dossier Zéphyr · second-projet', exact: true })).toBeVisible()
+    await search.fill('Zéphyr second-projet')
+    await search.press('Enter')
+    const board = page.getByRole('dialog', { name: 'Tableau de tâches' })
+    await expect(board).toContainText('Détail pour second-projet')
+    await expect(board.getByRole('button', { name: 'Éditer « Dossier Zéphyr »' })).toBeFocused()
+  } finally {
+    await app.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { taskStatuses, type IpcResponse, type Task, type TaskQueue, type TaskStatus } from '../../../shared/ipc'
 import { registerCommand } from '../palette/commands'
 import { TaskDispatchForm, type SendTask } from './TaskDispatchForm'
@@ -50,7 +50,7 @@ function TaskForm({ task, onSave, onClose }: { task?: Task; onSave: SaveDraft; o
 
   return (
     <form onSubmit={submit}>
-      <input aria-label={task ? 'Titre de la tâche' : 'Nouvelle tâche'} value={title}
+      <input data-task-focus={task?.id} aria-label={task ? 'Titre de la tâche' : 'Nouvelle tâche'} value={title}
         onChange={(e) => setTitle(e.target.value)} autoFocus={Boolean(task)} readOnly={saving} required />
       {task && <textarea aria-label="Description de la tâche" value={body} onChange={(e) => setBody(e.target.value)} readOnly={saving} />}
       <button type="submit" aria-disabled={saving}>{task ? 'Enregistrer' : 'Ajouter'}</button>
@@ -91,7 +91,7 @@ function TaskCard({ task, lastMove, onMove, onSave, onSend, queued }: CardProps)
       <strong>{task.title}</strong>
       {task.body && <p>{task.body}</p>}
       {moveButton(-1)}
-      <button type="button" autoFocus={focusEdit} onClick={() => setEditing(true)} aria-label={`Éditer « ${task.title} »`}>Éditer</button>
+      <button type="button" data-task-focus={task.id} autoFocus={focusEdit} onClick={() => setEditing(true)} aria-label={`Éditer « ${task.title} »`}>Éditer</button>
       {moveButton(1)}
       {task.status === 'todo' && !queued && <TaskDispatchForm send={onSend} />}
     </li>
@@ -99,8 +99,15 @@ function TaskCard({ task, lastMove, onMove, onSave, onSend, queued }: CardProps)
 }
 
 // Tableau de tâches du projet sélectionné (Ctrl+Shift+K). Le parent le recrée à chaque changement de projet.
-export function TaskBoard({ projectId }: { projectId: string | undefined }) {
+type TaskFocus = { projectId: string; id: number }
+
+export function TaskBoard({ projectId, focusRequest, onClose }: {
+  projectId: string | undefined
+  focusRequest?: TaskFocus | null
+  onClose?: () => void
+}) {
   const dialog = useRef<HTMLDialogElement>(null)
+  const focused = useRef<TaskFocus>(null)
   const [tasks, setTasks] = useState<Task[]>([])
   const [queue, setQueue] = useState<TaskQueue | null>(null)
   const [error, setError] = useState('')
@@ -146,20 +153,36 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
     void window.wu.invoke('tasks:list', { projectId }).then(setTasks, (reason: unknown) => setError(String(reason)))
   }), [projectId, refreshFailures])
 
-  useEffect(() => {
-    const showBoard = (load: (id: string) => void) => {
-      if (!dialog.current?.open) dialog.current?.showModal()
-      updateQueue(window.wu.invoke('tasks:queue', {}))
-      if (projectId) {
-        refreshFailures(projectId)
-        load(projectId)
-      }
+  const showBoard = useCallback((load: (id: string) => void) => {
+    if (!dialog.current?.open) dialog.current?.showModal()
+    updateQueue(window.wu.invoke('tasks:queue', {}))
+    if (projectId) {
+      refreshFailures(projectId)
+      load(projectId)
     }
+  }, [projectId, refreshFailures, updateQueue])
+  const loadBoard = useCallback((id: string) => void apply(window.wu.invoke('tasks:list', { projectId: id })), [apply])
+
+  useEffect(() => {
+    if (!focusRequest || focusRequest.projectId !== projectId) return
+    const frame = requestAnimationFrame(() => showBoard(loadBoard))
+    return () => cancelAnimationFrame(frame)
+  }, [focusRequest, loadBoard, projectId, showBoard])
+
+  useLayoutEffect(() => {
+    if (!focusRequest || focused.current === focusRequest || !dialog.current?.open) return
+    const target = dialog.current.querySelector<HTMLElement>(`[data-task-focus="${focusRequest.id}"]`)
+    if (!target) return
+    target.focus()
+    focused.current = focusRequest
+  }, [focusRequest, tasks])
+
+  useEffect(() => {
     const removeBoard = registerCommand({
       id: 'orchestration.tasks',
       title: 'Tableau de tâches',
       keybinding: 'Ctrl+Shift+K',
-      run: () => showBoard((id) => void apply(window.wu.invoke('tasks:list', { projectId: id }))),
+      run: () => showBoard(loadBoard),
     })
     const removeImport = registerCommand({
       id: 'orchestration.import-issues',
@@ -170,7 +193,7 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
       removeBoard()
       removeImport()
     }
-  }, [projectId, apply, importIssues, refreshFailures, updateQueue])
+  }, [importIssues, loadBoard, showBoard])
 
   const move = (task: Task, direction: Direction) => {
     const status = neighbour(task.status, direction)
@@ -180,7 +203,7 @@ export function TaskBoard({ projectId }: { projectId: string | undefined }) {
   }
 
   return (
-    <dialog ref={dialog} aria-label="Tableau de tâches">
+    <dialog ref={dialog} aria-label="Tableau de tâches" onClose={onClose}>
       <h2>Tâches</h2>
       {!projectId && <p>Aucun projet sélectionné.</p>}
       {projectId && <TaskForm onSave={(draft) => apply(window.wu.invoke('tasks:create', { projectId, ...draft }))} />}
