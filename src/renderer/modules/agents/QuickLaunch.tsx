@@ -11,6 +11,7 @@ export function QuickLaunch() {
     : 'Aucun worktree actif'
   const [agent, setAgent] = useState<AgentSession['agent']>('claude-code')
   const [newWorktree, setNewWorktree] = useState(false)
+  const submitting = useRef(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const prompt = useRef<HTMLInputElement>(null)
@@ -18,6 +19,13 @@ export function QuickLaunch() {
 
   useEffect(() => {
     prompt.current?.focus()
+    function keepWindowOpen(event: BeforeUnloadEvent) {
+      if (!submitting.current) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', keepWindowOpen)
+    return () => window.removeEventListener('beforeunload', keepWindowOpen)
   }, [])
 
   async function targetWorktree(selection: NonNullable<typeof selected>, branch: string): Promise<string> {
@@ -33,11 +41,12 @@ export function QuickLaunch() {
 
   async function launch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!selected || pending) return
+    if (!selected || submitting.current) return
     const fields = new FormData(event.currentTarget)
     const text = String(fields.get('prompt'))
     const branch = String(fields.get('branch') ?? '').trim()
     if (!text.trim() || (newWorktree && !branch)) return
+    submitting.current = true
     setPending(true)
     setError('')
     try {
@@ -45,6 +54,8 @@ export function QuickLaunch() {
       await requestAgentStart(crypto.randomUUID(), cwd, agent, text)
     } catch (cause) {
       setError((cause as Error).message)
+    } finally {
+      submitting.current = false
       setPending(false)
     }
   }
@@ -55,7 +66,7 @@ export function QuickLaunch() {
       aria-label="Lancement rapide"
       onSubmit={(event) => void launch(event)}
       onKeyDown={(event) => {
-        if (event.key === 'Escape' && !event.defaultPrevented) window.close()
+        if (event.key === 'Escape' && !event.defaultPrevented && !submitting.current) window.close()
       }}
     >
       <label>
