@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import type { WebContents } from 'electron'
 import {
-  AGENT_PROMPT_MAX_LENGTH,
+  maxAgentPromptLength,
   type IpcRequest,
   type Task,
   type TaskAgentStarted,
@@ -37,7 +37,7 @@ function buildPrompt(task: Task): string {
   const details = [task.issueUrl, task.body].filter(Boolean).join('\n\n')
   return (
     title +
-    details.slice(0, AGENT_PROMPT_MAX_LENGTH - title.length - taskInstructions.length - 2) +
+    details.slice(0, maxAgentPromptLength - title.length - taskInstructions.length - 2) +
     '\n\n' +
     taskInstructions
   )

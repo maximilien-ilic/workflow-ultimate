@@ -1,6 +1,8 @@
 import { app, BrowserWindow } from 'electron'
+import { isQuickLaunchWindow, showQuickLaunch } from './quick-launch'
 
 const actionId = /^[a-z0-9.-]+$/
+export const quickLaunchActionId = 'agents.quick-launch'
 
 export function parseAction(argv: readonly string[]): string | null {
   for (let index = 1; index < argv.length; index++) {
@@ -15,7 +17,11 @@ export function parseAction(argv: readonly string[]): string | null {
   return null
 }
 
-export function showMainWindow(window = BrowserWindow.getAllWindows()[0]): void {
+function mainWindow(): BrowserWindow | undefined {
+  return BrowserWindow.getAllWindows().find((window) => !isQuickLaunchWindow(window))
+}
+
+export function showMainWindow(window = mainWindow()): void {
   if (!window) return
   if (window.isMinimized()) window.restore()
   window.show()
@@ -23,7 +29,7 @@ export function showMainWindow(window = BrowserWindow.getAllWindows()[0]): void 
 }
 
 function toggleMainWindow(): void {
-  const window = BrowserWindow.getAllWindows()[0]
+  const window = mainWindow()
   if (!window) return
   if (window.isVisible() && !window.isMinimized()) window.hide()
   else showMainWindow()
@@ -32,6 +38,13 @@ function toggleMainWindow(): void {
 const actions = new Map<string, () => void>([
   ['window.show', showMainWindow],
   ['window.toggle', toggleMainWindow],
+  [
+    quickLaunchActionId,
+    () => {
+      const main = mainWindow()
+      if (main) showQuickLaunch(main)
+    },
+  ],
 ])
 
 export function runMainAction(id: string): void {

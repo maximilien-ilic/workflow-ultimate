@@ -1,8 +1,10 @@
 import { execFile } from 'node:child_process'
 import { app, globalShortcut } from 'electron'
-import { runMainAction } from './single-instance'
+import { quickLaunchActionId, runMainAction } from './single-instance'
 
 const accelerator = 'Super+Shift+W'
+const quickLaunchAccelerator = 'Super+Shift+N'
+const quickLaunchFallback = `Repli : workflow-ultimate --action ${quickLaunchActionId}`
 const shortcutLabel = 'Meta+Shift+W'
 const plasmaKey = 0x10000000 | 0x02000000 | 0x57 // Qt::META | Qt::SHIFT | Qt::Key_W
 const portalAppId = 'io.github.maximilien-ilic.workflow-ultimate' // desktopName dans package.json
@@ -49,6 +51,12 @@ function unavailable(reason: string): void {
   console.warn(status.message)
 }
 
+function registerPortalShortcut(accelerator: string, action: string): boolean {
+  if (!globalShortcut.register(accelerator, () => runMainAction(action))) return false
+  app.once('will-quit', () => globalShortcut.unregister(accelerator))
+  return true
+}
+
 export async function registerGlobalShortcuts(): Promise<void> {
   const session = process.env['XDG_SESSION_TYPE']
   const ozone = app.commandLine.getSwitchValue('ozone-platform')
@@ -74,7 +82,10 @@ export async function registerGlobalShortcuts(): Promise<void> {
     unavailable('Portail XDG GlobalShortcuts indisponible.')
     return
   }
-  if (!globalShortcut.register(accelerator, () => runMainAction('window.toggle'))) {
+  const toggleRegistered = registerPortalShortcut(accelerator, 'window.toggle')
+  if (!registerPortalShortcut(quickLaunchAccelerator, quickLaunchActionId))
+    console.warn(`Demande d’enregistrement de Meta+Shift+N refusée par Electron. ${quickLaunchFallback}`)
+  if (!toggleRegistered) {
     unavailable(`Demande d’enregistrement de ${shortcutLabel} refusée par Electron.`)
     return
   }
@@ -83,5 +94,4 @@ export async function registerGlobalShortcuts(): Promise<void> {
     state: 'available',
     message: `Portail disponible, demande ${shortcutLabel} transmise. ${fallback}`,
   }
-  app.once('will-quit', () => globalShortcut.unregister(accelerator))
 }

@@ -1,6 +1,5 @@
-import type { AgentSession, AgentState } from '../../../shared/ipc'
+import type { AgentSession, AgentState, QuickAgentStarted } from '../../../shared/ipc'
 import { terminalStore } from '../terminals/terminal-store'
-
 import notificationSoundUrl from '../shell/notification.wav'
 
 window.wu.onAgentDesktopEvent((event) => {
@@ -111,6 +110,13 @@ window.wu.onTaskAgentStarted(({ session, terminalId, branch }) => {
   terminalStore.openAttachedTab(session.cwd, title, terminalId)
 })
 
+export function attachQuickAgent(session: QuickAgentStarted) {
+  const agentName = session.agent === 'claude-code' ? 'Claude' : 'Codex'
+  const title = `${agentName} · ${session.cwd.split('/').at(-1)}`
+  agentStore.started(session.terminalId, { sessionId: session.id, agent: session.agent, title }, session.state)
+  terminalStore.openAttachedTab(session.cwd, title, session.terminalId)
+}
+
 // DESIGN.md §3 : une icône et un libellé pour chaque état (la couleur seule ne suffit pas).
 export const stateLabel: Record<AgentState, { icon: string; text: string }> = {
   starting: { icon: '○', text: 'démarrage' },
@@ -118,6 +124,17 @@ export const stateLabel: Record<AgentState, { icon: string; text: string }> = {
   waiting: { icon: '◐', text: 'attend une réponse' },
   done: { icon: '✓', text: 'terminé' },
   error: { icon: '✕', text: 'erreur' },
+}
+
+const agentTerminalSize = { cols: 120, rows: 30 }
+
+export function requestAgentStart(
+  terminalId: string,
+  cwd: string,
+  agent: AgentSession['agent'],
+  prompt?: string,
+): Promise<AgentSession> {
+  return window.wu.invoke('agents:start', { terminalId, cwd, agent, prompt, ...agentTerminalSize })
 }
 
 // Lance un agent dans un nouveau terminal ; renvoie l'id du terminal à ouvrir dans un onglet.
@@ -128,10 +145,9 @@ export async function startAgent(
 ): Promise<string> {
   const { agent = 'claude-code', resumeOf } = opts
   const terminalId = crypto.randomUUID()
-  const size = { cols: 120, rows: 30 }
   const session = resumeOf
-    ? await window.wu.invoke('agents:resume', { sessionId: resumeOf, terminalId, ...size })
-    : await window.wu.invoke('agents:start', { terminalId, cwd, agent, prompt: opts.prompt, ...size })
+    ? await window.wu.invoke('agents:resume', { sessionId: resumeOf, terminalId, ...agentTerminalSize })
+    : await requestAgentStart(terminalId, cwd, agent, opts.prompt)
   agentStore.started(terminalId, { sessionId: session.id, agent: session.agent, title }, session.state)
   return terminalId
 }

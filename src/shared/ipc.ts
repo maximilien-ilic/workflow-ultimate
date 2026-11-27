@@ -5,6 +5,8 @@ import { HISTORY_CHARACTERS, type PaneTree } from './terminal-history'
 // Contrat unique main ↔ renderer. Pas d'import Node ni DOM ici.
 // Ajouter un canal = un schéma de requête + un type de réponse.
 const absolutePath = z.string().startsWith('/', 'chemin absolu attendu').max(4096)
+export const maxAgentPromptLength = 20_000
+export const maxWorktreeBranchLength = 200
 const dimension = z.number().int().min(1).max(1000)
 
 const paneTreeSchema: z.ZodType<PaneTree> = z.discriminatedUnion('type', [
@@ -40,7 +42,6 @@ export type TerminalHistory = z.infer<typeof terminalHistorySchema>
 // Colonnes du tableau de tâches, dans l'ordre d'affichage.
 export const taskStatuses = ['todo', 'doing', 'review', 'done'] as const
 // Partagée avec l'import des issues GitHub : une tâche importée doit rester éditable.
-export const AGENT_PROMPT_MAX_LENGTH = 20_000
 const agentKind = z.enum(['claude-code', 'codex'])
 export const TASK_BODY_MAX_LENGTH = 20_000
 const taskDraft = { title: z.string().trim().min(1, 'titre vide').max(256), body: z.string().max(TASK_BODY_MAX_LENGTH) }
@@ -68,7 +69,7 @@ export const ipcRequestSchemas = {
   'worktrees:list': z.object({ projectId: z.uuid() }).strict(),
   'worktrees:status': z.object({ projectId: z.uuid() }).strict(),
   'worktrees:create': z
-    .object({ projectId: z.uuid(), branch: z.string().min(1).max(200), create: z.boolean() })
+    .object({ projectId: z.uuid(), branch: z.string().min(1).max(maxWorktreeBranchLength), create: z.boolean() })
     .strict(),
   // Ticket GitHub #n → worktree sur la branche feat/<n>-<titre> (créée si besoin).
   'worktrees:createFromIssue': z.object({ projectId: z.uuid(), issue: z.number().int().positive() }).strict(),
@@ -95,7 +96,7 @@ export const ipcRequestSchemas = {
       terminalId: z.uuid(),
       cwd: absolutePath,
       agent: agentKind,
-      prompt: z.string().max(AGENT_PROMPT_MAX_LENGTH).optional(),
+      prompt: z.string().max(maxAgentPromptLength).optional(),
       cols: dimension,
       rows: dimension,
     })
@@ -205,6 +206,8 @@ export type AgentSession = {
   terminalId: string | null // null : pas de terminal ouvert dans cette exécution de l'appli
   updatedAt: number
 }
+// Le volet garde sa sortie même si le processus est déjà terminé.
+export type QuickAgentStarted = Omit<AgentSession, 'terminalId'> & { terminalId: string }
 // Poussé sur le canal `agent:event` à la fenêtre qui a lancé l'agent.
 export type AgentDesktopEvent = { type: 'show-terminal'; terminalId: string } | { type: 'play-sound' }
 export type TaskQueueItem = { id: number; projectId: string; title: string; agent: AgentSession['agent'] }

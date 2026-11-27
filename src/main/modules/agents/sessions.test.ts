@@ -11,6 +11,8 @@ vi.mock('electron', () => ({
   app: { isPackaged: true },
   BrowserWindow: class {},
 }))
+vi.mock('../shell/quick-launch', () => ({ quickLaunchWindowFor: vi.fn(), finishQuickLaunch: vi.fn() }))
+const { quickLaunchWindowFor, finishQuickLaunch } = await import('../shell/quick-launch')
 const { registerAgentHandlers } = await import('./sessions')
 const { openDatabase } = await import('../shell/db')
 const { migrations } = await import('../shell/migrations')
@@ -29,19 +31,30 @@ const spawn = vi.fn()
 const writeConfirmed = vi.fn()
 const onStateChange = vi.fn()
 let agents: AgentSessions
+let terminalExited: (terminalId: string, code: number) => void
 beforeEach(() => {
   handlers.clear()
   spawn.mockReset()
   writeConfirmed.mockReset()
   onStateChange.mockReset()
+  vi.mocked(quickLaunchWindowFor).mockReset()
+  vi.mocked(finishQuickLaunch).mockReset()
   dir = mkdtempSync(join(tmpdir(), 'wu-sessions-'))
   db = openDatabase(join(dir, 'app.db'), migrations)
-  agents = registerAgentHandlers(db, { spawn, writeConfirmed, onExit: () => {} } as never, {
-    notify: { node: '/n', script: '/s' },
-    socketPath: '/tmp/x.sock',
-    onStateChange,
-    bins: { 'claude-code': 'claude', codex: 'codex' },
-  })
+  agents = registerAgentHandlers(
+    db,
+    {
+      spawn,
+      writeConfirmed,
+      onExit: (listener) => { terminalExited = listener },
+    },
+    {
+      notify: { node: '/n', script: '/s' },
+      socketPath: '/tmp/x.sock',
+      onStateChange,
+      bins: { 'claude-code': 'claude', codex: 'codex' },
+    },
+  )
 })
 
 it('publie la transition avec le terminal associé et ignore les états répétés', async () => {
@@ -59,6 +72,33 @@ it('publie la transition avec le terminal associé et ignore les états répét�
       terminalId,
       state: 'waiting',
     }),
+  )
+})
+
+it('attache la sortie dans la fenêtre principale même si l’agent du lanceur termine avant la réponse', async () => {
+  const terminalId = crypto.randomUUID()
+  const mainContents = { send: vi.fn(), isDestroyed: () => false }
+  const mainWindow = {
+    webContents: mainContents,
+    isDestroyed: () => false,
+    isMinimized: () => false,
+    show: vi.fn(),
+    focus: vi.fn(),
+  }
+  const launcher = { getParentWindow: () => mainWindow }
+  vi.mocked(quickLaunchWindowFor).mockReturnValueOnce(launcher as never)
+  spawn.mockImplementationOnce(async () => {
+    terminalExited(terminalId, 0)
+    return 1
+  })
+
+  const result = await call('agents:start', { terminalId, cwd: dir, agent: 'claude-code', ...size })
+  expect(result).toMatchObject({ state: 'done', terminalId: null })
+  expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ owner: mainContents }))
+  expect(finishQuickLaunch).toHaveBeenCalledExactlyOnceWith(
+    launcher,
+    mainWindow,
+    expect.objectContaining({ terminalId, state: 'done' }),
   )
 })
 

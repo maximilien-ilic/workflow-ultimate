@@ -19,13 +19,12 @@ export function rendererUrl(): string {
   )
 }
 
-export function createMainWindow(): BrowserWindow {
-  const url = rendererUrl()
+export function createRendererWindow(options: Electron.BrowserWindowConstructorOptions, fragment = ''): BrowserWindow {
+  const url = new URL(rendererUrl())
+  url.hash = fragment
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    ...options,
     show: false,
-    title: 'Workflow Ultimate',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -33,17 +32,22 @@ export function createMainWindow(): BrowserWindow {
       sandbox: true,
     },
   })
-  win.once('ready-to-show', () => win.show())
 
   // Toute nouvelle fenêtre est refusée ; les liens des terminaux passent par shell:openUrl (http/https)
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   const withoutHash = (u: string) => u.split('#')[0]
   const stayOnRenderer = (event: Electron.Event, target: string) => {
-    if (withoutHash(target) !== withoutHash(url)) event.preventDefault()
+    if (withoutHash(target) !== withoutHash(url.href)) event.preventDefault()
   }
   win.webContents.on('will-navigate', stayOnRenderer)
   win.webContents.on('will-redirect', stayOnRenderer)
 
-  void win.loadURL(url)
+  void win.loadURL(url.href)
   return win
+}
+
+export function createMainWindow(): BrowserWindow {
+  const window = createRendererWindow({ width: 1280, height: 800, title: 'Workflow Ultimate' })
+  window.once('ready-to-show', () => window.show())
+  return window
 }

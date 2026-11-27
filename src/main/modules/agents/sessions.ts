@@ -3,6 +3,8 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { WebContents } from 'electron'
 import type { AgentEvent, AgentSession, AgentState, IpcRequest } from '../../../shared/ipc'
 import { handle } from '../shell/ipc'
+import { finishQuickLaunch, quickLaunchWindowFor } from '../shell/quick-launch'
+import { showMainWindow } from '../shell/single-instance'
 import { shellEnv, type Terminals } from '../terminals/ipc'
 import { claudeArgs, type NotifyTarget } from './claude-code'
 import { codexArgs } from './codex'
@@ -148,7 +150,18 @@ export function registerAgentHandlers(
     return launch({ id: randomUUID(), cwd, agent, external_id: null }, false, req, owner)
   }
 
-  handle('agents:start', (request, event) => start(request, event.sender))
+  handle('agents:start', async (request, event) => {
+    const launcher = quickLaunchWindowFor(event.sender)
+    const parent = launcher?.getParentWindow()
+    // Le PTY et son onglet appartiennent à la fenêtre principale et survivent au lanceur.
+    const owner = parent?.webContents ?? event.sender
+    const session = await start(request, owner)
+    if (launcher && parent) {
+      finishQuickLaunch(launcher, parent, { ...session, terminalId: request.terminalId })
+      if (!parent.isDestroyed()) showMainWindow(parent)
+    }
+    return session
+  })
 
   handle('agents:resume', ({ sessionId, terminalId, cols, rows }, event) => {
     const saved = row(sessionId)
