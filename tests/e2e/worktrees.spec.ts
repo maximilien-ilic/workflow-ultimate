@@ -121,6 +121,16 @@ test('la barre latérale suit les changements Git depuis le terminal intégré',
     await page.keyboard.type('git switch --detach\n')
     const detached = tree.getByRole('treeitem', { name: `HEAD ${git('rev-parse', '--short=7', 'HEAD')}` })
     await expect(detached).toContainText('1 non suivi')
+
+    await page.keyboard.type('git worktree add -b temporaire ../lié-temporaire\n')
+    const linked = tree.getByRole('treeitem', { name: 'temporaire', exact: true })
+    await expect(linked).toBeVisible()
+    await linked.click()
+    await expect(linked).toHaveAttribute('aria-selected', 'true')
+    await page.locator('.terminal-host').click()
+    await page.keyboard.type('git worktree remove ../lié-temporaire\n')
+    await expect(linked).toHaveCount(0)
+    await expect(detached).toHaveAttribute('aria-selected', 'true')
   } finally {
     await app.close()
   }
