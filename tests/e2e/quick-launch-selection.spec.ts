@@ -19,7 +19,9 @@ test('rappeler le lanceur actualise le worktree actif et conserve le prompt', as
   writeFileSync(join(config, 'workflow-ultimate/settings.json'), JSON.stringify({
     orcaImport: { seen: true, workspaces: workspace },
   }))
-  const args = ['out/main/index.js', '--user-data-dir=' + join(dir, 'profile')]
+  // shortcut: le runner Ubuntu isolé ne peut pas initialiser le sandbox Chromium.
+  const noSandbox = process.env['CI'] ? ['--no-sandbox'] : []
+  const args = [...noSandbox, 'out/main/index.js', '--user-data-dir=' + join(dir, 'profile')]
   const env = {
     ...process.env,
     XDG_CONFIG_HOME: config,
@@ -36,8 +38,7 @@ test('rappeler le lanceur actualise le worktree actif et conserve le prompt', as
     const exe = app.process().spawnfile
     const recall = () => promisify(execFile)(exe, [...args, '--action', 'agents.quick-launch'], { env, timeout: 5_000 })
     const open = async () => {
-      const opened = app.waitForEvent('window')
-      await recall()
+      const [opened] = await Promise.all([app.waitForEvent('window', { timeout: 5_000 }), recall()])
       return opened
     }
     const current = (index: number) => `Actif · ${repos[index]!.name} · ${repos[index]!.branch}`
